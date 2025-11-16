@@ -1,0 +1,241 @@
+/* TitTap Editor Design */
+.ProseMirror {
+    padding: 10px;
+    border-top: 1px solid grey;
+    background: white;
+    border-radius: 0 0 5px 5px;
+    min-height: 100px;
+  }
+  .ProseMirror:focus {
+    border: none;
+    outline: 2px solid rgb(0, 26, 41);
+  }
+  
+  .ProseMirror > * + * {
+    margin-top: 0.75em;
+  }
+  
+  .ProseMirror ul,
+  .ProseMirror ol {
+    padding: 0 2rem;
+  }
+  
+  .ProseMirror h1,
+  .ProseMirror h2,
+  .ProseMirror h3,
+  .ProseMirror h4,
+  .ProseMirror h5,
+  .ProseMirror h6 {
+    line-height: 1.1;
+  }
+  
+  .ProseMirror code {
+    background-color: rgba(#616161, 0.1);
+    color: #616161;
+  }
+  
+  .ProseMirror pre {
+    background: #0d0d0d;
+    color: #fff;
+    font-family: "JetBrainsMono", monospace;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+  }
+  .ProseMirror code {
+    color: inherit;
+    padding: 0;
+    background: none;
+    font-size: 0.8rem;
+  }
+  
+  .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  .ProseMirror blockquote {
+    padding-left: 1rem;
+    border-left: 3px solid #999999;
+  }
+  
+  .ProseMirror hr {
+    border: none;
+    border-top: 3px solid #999999;
+    margin: 2rem 0;
+  }
+  
+  /* ............................ */
+  .textEditor {
+    border-radius: 5px;
+    border: 1px solid grey;
+  }
+  .menuBar {
+    padding-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .menuBar button {
+    font-size: 18px;
+    margin: 7px;
+    margin-right: 15px;
+    outline: none;
+    border: none;
+    background: none;
+    color: rgb(70, 70, 70);
+    cursor: pointer;
+  }
+  .menuBar button:last-child {
+    margin-right: 7px;
+  }
+  
+  .heading3 {
+    font-size: 15px;
+  }
+  
+  button.is_active {
+    background: rgb(197, 197, 197);
+    padding: 2px 3px;
+    border-radius: 2px;
+  }
+
+  /* Genel Görünüm */
+.ProseMirror {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #333;
+  background: #fff;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  min-height: 100px;
+  overflow-wrap: break-word;
+}
+
+/* Focus Durumu */
+.ProseMirror:focus {
+  outline: 2px solid #0ea5e9;
+  border-color: #0ea5e9;
+}
+
+/* Başlıklar */
+.ProseMirror h1 {
+  font-size: 2em;
+  margin-bottom: 0.5em;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.ProseMirror h3 {
+  font-size: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+/* Liste Stilleri */
+.ProseMirror ul {
+  list-style-type: disc;
+  margin-left: 20px;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  margin-left: 20px;
+}
+
+/* Linkler */
+.ProseMirror a {
+  color: #0ea5e9;
+  text-decoration: none;
+}
+
+.ProseMirror a:hover {
+  text-decoration: underline;
+}
+
+/* Blok Alıntı */
+.ProseMirror blockquote {
+  border-left: 4px solid #ccc;
+  margin: 10px 0;
+  padding-left: 10px;
+  color: #555;
+  font-style: italic;
+}
+
+/* Kod Blokları */
+.ProseMirror pre {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 5px;
+  font-family: "Courier New", monospace;
+  overflow-x: auto;
+}
+
+.ProseMirror code {
+  background-color: #f1f1f1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: "Courier New", monospace;
+}
+
+/* Kalın, İtalik ve Alt Çizgili Yazılar */
+.ProseMirror strong {
+  font-weight: bold;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+.ProseMirror s {
+  text-decoration: line-through;
+}
+
+/* Hizalama */
+.ProseMirror .ql-align-center {
+  text-align: center;
+}
+
+.ProseMirror .ql-align-right {
+  text-align: right;
+}
+
+.ProseMirror .ql-align-justify {
+  text-align: justify;
+}
+
+/* Yazı Boyutları */
+.ProseMirror .ql-size-small {
+  font-size: 0.75em;
+}
+
+.ProseMirror .ql-size-large {
+  font-size: 1.5em;
+}
+
+.ProseMirror .ql-size-huge {
+  font-size: 2.5em;
+}
+
+.ProseMirror .ql-size-normal {
+  font-size: 1em;
+}
+
+/* Yazı Tipleri */
+.ProseMirror .ql-font-sans-serif {
+  font-family: 'Arial', sans-serif;
+}
+
+.ProseMirror .ql-font-serif {
+  font-family: 'Georgia', serif;
+}
+
+.ProseMirror .ql-font-monospace {
+  font-family: 'Courier New', monospace;
+}

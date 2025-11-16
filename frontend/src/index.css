@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+    font-family: 'Bear Days';
+    src: url('./assets/fonts/Bear_Days.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+.font-brand {
+    font-family: 'Bear Days', sans-serif;
+}
+
+body{
+    height: 100vh;
+}
+
+.ql-editor{
+    font-size: 1.05rem;
+}
