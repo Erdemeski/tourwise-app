@@ -20,6 +20,7 @@ import { AnimatedShinyText } from '@/components/ui/animated-shiny-text';
 import { cn } from '@/lib/utils';
 import { RainbowButton } from '@/components/ui/rainbow-button';
 import { TypingAnimation } from '@/components/ui/typing-animation';
+import { SparklesText } from '@/components/ui/sparkles-text';
 
 const stats = [
   { id: 1, name: 'We help every year', value: '500', suffix: ' users', prefix: '>' },
@@ -310,9 +311,11 @@ export default function HomePage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className='text-center font-semibold text-3xl mt-5 z-50 relative'
+          className='text-center mt-5 z-50 relative'
         >
-          Freshly Shared Routes
+          <SparklesText sparklesCount={6} className='text-4xl sm:text-5xl font-semibold text-gray-900 dark:text-gray-100' >
+            Freshly Shared Routes
+          </SparklesText>
         </motion.h1>
         <motion.div
           initial={{ opacity: 0 }}

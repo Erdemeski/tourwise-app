@@ -1,14 +1,12 @@
-import { Spinner } from 'flowbite-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import RouteFeedCard from '../components/RouteFeedCard';
 import RouteFeedCardSkeleton from '../components/RouteFeedCardSkeleton';
 import FilterPanel from '../components/FilterPanel';
+import ExploreSidebar from '../components/ExploreSidebar';
 import { ScrollProgress } from '../components/ui/scroll-progress';
 
 const FEED_BATCH_SIZE = 5;
-const FALLBACK_COVER =
-    'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80';
 
 export default function ExploreRoutes() {
     const location = useLocation();
@@ -68,7 +66,7 @@ export default function ExploreRoutes() {
 
             const loaded = startIndex + nextRoutes.length;
             const total = data.totalRoutes ?? null;
-            
+
             // Eğer total bilgisi varsa onu kullan, yoksa gelen route sayısına göre karar ver
             if (total !== null) {
                 // Total bilgisi varsa, yüklenen sayı total'den azsa ve gelen route sayısı batch size'a eşitse daha fazla var
@@ -195,11 +193,12 @@ export default function ExploreRoutes() {
                                 setTag={(newTag) => handleFilterChange('tag', newTag)}
                             />
                         </div>
-{/*                         <div className='rounded-3xl border border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-white p-6 shadow-md'>
+                        {/*                         <div className='rounded-3xl border border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-white p-6 shadow-md'>
                             <h3 className='text-lg font-semibold mb-2'>Filtreleri Kullan</h3>
                             <p className='text-sm text-slate-200'>Aradığın rota tipini seç, keşfet butonuna bas ve topluluğun en güncel önerilerini gör.</p>
                         </div>
- */}                    </aside>
+ */}
+                    </aside>
 
                     <main className='space-y-8'>
                         <section className='rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 text-white p-8 shadow-lg'>
@@ -257,70 +256,10 @@ export default function ExploreRoutes() {
                         )}
                     </main>
 
-                    <aside>
-                        <div className='space-y-6 lg:sticky lg:top-24'>
-                            <section className='rounded-3xl border border-slate-100 dark:border-gray-600 bg-white dark:bg-[rgb(32,38,43)] p-5 shadow-sm'>
-                                <h3 className='text-lg font-semibold text-slate-900 dark:text-white mb-4'>Bu Hafta Yükselenler</h3>
-                                <div className='space-y-4'>
-                                    {highlightRoutes.length > 0 ? (
-                                        highlightRoutes.map((route) => (
-                                            <Link key={route._id} to={`/routes/${route.slug}`} className='flex items-start gap-3 group'>
-                                                <img
-                                                    src={route.coverImage || FALLBACK_COVER}
-                                                    alt={route.title}
-                                                    className='h-16 w-16 rounded-2xl object-cover flex-shrink-0'
-                                                />
-                                                <div>
-                                                    <p className='text-sm font-medium text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition'>
-                                                        {route.title}
-                                                    </p>
-                                                    <p className='text-xs text-slate-500 dark:text-slate-400'>{route.tags?.[0] || 'Öne çıkan rota'}</p>
-                                                </div>
-                                            </Link>
-                                        ))
-                                    ) : (
-                                        <p className='text-sm text-slate-500 dark:text-slate-400'>Trend rotalar yakında burada görünecek.</p>
-                                    )}
-                                </div>
-                            </section>
-
-                            <section className='rounded-3xl border border-slate-100 dark:border-gray-600 bg-white dark:bg-[rgb(32,38,43)] p-5 shadow-sm'>
-                                <h3 className='text-lg font-semibold text-slate-900 dark:text-white mb-4'>Takip Etmeye Değer Gezginler</h3>
-                                <div className='space-y-4'>
-                                    {suggestedCreators.length > 0 ? (
-                                        suggestedCreators.map((creator) => (
-                                            <div key={creator.username} className='flex items-center justify-between gap-3'>
-                                                <div className='flex items-center gap-3'>
-                                                    <img
-                                                        src={creator.profilePicture || 'https://i.pravatar.cc/100?img=12'}
-                                                        alt={creator.username}
-                                                        className='h-12 w-12 rounded-full object-cover bg-gray-100'
-                                                    />
-                                                    <div>
-                                                        <p className='text-sm font-medium text-slate-900 dark:text-white'>
-                                                            {creator.fullName || creator.username}
-                                                        </p>
-                                                        <p className='text-xs text-slate-500 dark:text-slate-400'>@{creator.username}</p>
-                                                        {creator.sampleRoute && (
-                                                            <p className='text-xs text-slate-400 mt-1'>{creator.sampleRoute}</p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <Link
-                                                    to={`/user/${creator.username}`}
-                                                    className='px-3 py-1.5 text-xs font-medium rounded-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-200 transition'
-                                                >
-                                                    Takip Et
-                                                </Link>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className='text-sm text-slate-500 dark:text-slate-400'>Gezgin önerileri yakında.</p>
-                                    )}
-                                </div>
-                            </section>
-                        </div>
-                    </aside>
+                    <ExploreSidebar
+                        highlightRoutes={highlightRoutes}
+                        suggestedCreators={suggestedCreators}
+                    />
                 </div>
             </div>
         </div>
