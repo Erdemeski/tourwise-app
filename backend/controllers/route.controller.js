@@ -1,7 +1,9 @@
 import Route from "../models/route.model.js";
 import Comment from "../models/comment.model.js";
 import User from "../models/user.model.js";
+import Itinerary from "../models/itinerary.model.js";
 import { errorHandler } from "../utils/error.js";
+import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
 
 const buildSlug = (title = "") => {
     const base = title
@@ -93,6 +95,153 @@ export const createRoute = async (req, res, next) => {
         });
 
         const savedRoute = await newRoute.save();
+        res.status(201).json(savedRoute);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const buildNarrativeFromDays = (days = []) => {
+    if (!Array.isArray(days) || !days.length) {
+        return "";
+    }
+
+    return days
+        .map((day) => {
+            const header = `Day ${day?.dayNumber ?? ""}${day?.title ? ` - ${day.title}` : ""}`.trim();
+            const summary = day?.summary ? `\n${day.summary}` : "";
+            const stops = Array.isArray(day?.stops)
+                ? day.stops
+                    .map((stop, idx) => {
+                        const label = stop?.name ?? `Stop ${idx + 1}`;
+                        const city = stop?.location?.city ? ` (${stop.location.city})` : "";
+                        const timeWindow =
+                            stop?.startTime || stop?.endTime
+                                ? ` [${stop?.startTime ?? ""}${stop?.endTime ? ` - ${stop.endTime}` : ""}]`
+                                : "";
+                        return `  ${idx + 1}. ${label}${city}${timeWindow}`;
+                    })
+                    .join("\n")
+                : "";
+            return `${header}${summary}${stops ? `\n${stops}` : ""}`;
+        })
+        .join("\n\n");
+};
+
+export const createRouteFromItinerary = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            return next(errorHandler(401, "You must be signed in to publish an itinerary"));
+        }
+
+        const {
+            itineraryId,
+            title,
+            summary,
+            visibility = "private",
+            coverImage,
+            gallery,
+            tags,
+            terrainTypes,
+            season,
+            startLocation,
+            endLocation,
+            distanceKm,
+            durationDays,
+            overview,
+            itinerary: itineraryNarrative,
+            highlights,
+            tips,
+            allowForks = true,
+            allowComments = true,
+            sharePublicly = false,
+        } = req.body;
+
+        if (!itineraryId) {
+            return next(errorHandler(400, "Itinerary id is required"));
+        }
+
+        const baseItinerary = await Itinerary.findById(itineraryId);
+        if (!baseItinerary) {
+            return next(errorHandler(404, "Itinerary not found"));
+        }
+
+        if (baseItinerary.source !== "ai") {
+            return next(errorHandler(400, "Only AI itineraries can be published through this endpoint"));
+        }
+
+        const isOwner = baseItinerary.userId === req.user.id;
+        const isAdmin = req.user?.isAdmin === true;
+
+        if (!isOwner && !isAdmin) {
+            return next(errorHandler(403, "You are not allowed to publish this itinerary"));
+        }
+
+        const derivedWaypoints =
+            Array.isArray(baseItinerary.waypointList) && baseItinerary.waypointList.length
+                ? baseItinerary.waypointList
+                : mapDaysToWaypointList(baseItinerary.days);
+
+        const derivedTitle = title || baseItinerary.title;
+        const derivedSummary = summary || baseItinerary.summary;
+
+        if (!derivedTitle || !derivedSummary) {
+            return next(errorHandler(400, "Title and summary are required to publish a route"));
+        }
+
+        const slugCandidate = buildSlug(derivedTitle);
+        let slug = slugCandidate;
+        let collisionCount = 0;
+        while (await Route.findOne({ slug })) {
+            collisionCount += 1;
+            slug = `${slugCandidate}-${collisionCount}`;
+        }
+
+        const narrative = itineraryNarrative || buildNarrativeFromDays(baseItinerary.days);
+        const sanitizedGallery = sanitizeArray(gallery?.length ? gallery : baseItinerary.gallery);
+        const sanitizedTags = sanitizeArray(tags?.length ? tags : baseItinerary.tags);
+        const sanitizedTerrain = sanitizeArray(terrainTypes);
+        const firstWaypoint = derivedWaypoints[0];
+        const lastWaypoint = derivedWaypoints[derivedWaypoints.length - 1];
+
+        const newRoute = new Route({
+            userId: req.user.id,
+            title: derivedTitle,
+            summary: derivedSummary,
+            visibility,
+            slug,
+            coverImage: coverImage || baseItinerary.coverImage,
+            gallery: sanitizedGallery,
+            tags: sanitizedTags,
+            terrainTypes: sanitizedTerrain,
+            season: season || baseItinerary.season || "all",
+            startLocation: startLocation || firstWaypoint?.location || "",
+            endLocation: endLocation || lastWaypoint?.location || "",
+            distanceKm: typeof distanceKm === "number" ? distanceKm : 0,
+            durationDays:
+                durationDays ??
+                baseItinerary.durationDays ??
+                (Array.isArray(baseItinerary.days) ? baseItinerary.days.length : 0),
+            overview: overview || baseItinerary.summary,
+            itinerary: narrative,
+            highlights: highlights || "",
+            tips: tips || "",
+            waypointList: derivedWaypoints,
+            allowForks,
+            allowComments,
+            sourceRouteId: null,
+            sourceItineraryId: baseItinerary._id.toString(),
+        });
+
+        const savedRoute = await newRoute.save();
+
+        baseItinerary.status = "published";
+        baseItinerary.publishedRouteId = savedRoute._id.toString();
+        if (sharePublicly) {
+            baseItinerary.visibility = "shared";
+        }
+        await baseItinerary.save();
+
         res.status(201).json(savedRoute);
     } catch (error) {
         next(error);

@@ -10,6 +10,7 @@ import cookieParser from "cookie-parser";
 import itineraryRoutes from './routes/itinerary.route.js';
 import contactRoutes from './routes/contact.route.js';
 import settingRoutes from './routes/settings.route.js';
+import aiRoutes from './routes/ai.route.js';
 
 
 mongoose
@@ -38,6 +39,7 @@ app.use('/api/comment', commentRoutes);
 app.use('/api/itineraries', itineraryRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/setting', settingRoutes);
+app.use('/api/ai', aiRoutes);
 
 
 app.use((err, req, res, next) => {

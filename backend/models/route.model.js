@@ -140,6 +140,11 @@ const routeSchema = new mongoose.Schema({
         default: null,
         index: true,
     },
+    sourceItineraryId: {
+        type: String,
+        default: null,
+        index: true,
+    },
     waypointList: {
         type: [waypointSchema],
         default: [],

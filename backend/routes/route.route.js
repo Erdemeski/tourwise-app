@@ -2,6 +2,7 @@ import express from "express";
 import { verifyToken, verifyOptionalToken } from "../utils/verifyUser.js";
 import {
     createRoute,
+    createRouteFromItinerary,
     getRoutes,
     updateRoute,
     deleteRoute,
@@ -12,6 +13,7 @@ import {
 const router = express.Router();
 
 router.post('/', verifyToken, createRoute);
+router.post('/from-itinerary', verifyToken, createRouteFromItinerary);
 router.get('/', verifyOptionalToken, getRoutes);
 router.put('/:routeId', verifyToken, updateRoute);
 router.delete('/:routeId', verifyToken, deleteRoute);

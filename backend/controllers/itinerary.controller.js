@@ -46,6 +46,7 @@ export const createItinerary = async (req, res, next) => {
         const itinerary = new Itinerary({
             userId: req.user.id,
             routeId,
+            source: 'route',
             title,
             summary: summary || baseRoute.summary,
             notes: notes || "",
@@ -54,6 +55,7 @@ export const createItinerary = async (req, res, next) => {
             tags: sanitizeArray(tagsToUse),
             waypointList: Array.isArray(waypointList) && waypointList.length > 0 ? waypointList : baseRoute.waypointList,
             forkedFromRouteId: baseRoute._id.toString(),
+            durationDays: baseRoute.durationDays || (Array.isArray(waypointList) ? waypointList.length : 0),
         });
 
         const savedItinerary = await itinerary.save();
@@ -87,6 +89,10 @@ const buildItineraryQuery = (req) => {
 
     if (req.query.tag) {
         query.tags = { $in: [req.query.tag] };
+    }
+
+    if (req.query.source) {
+        query.source = req.query.source;
     }
 
     return query;
