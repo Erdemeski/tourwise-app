@@ -1,23 +1,20 @@
-import dotenv from 'dotenv';
 import OpenAI from 'openai';
+import dotenv from 'dotenv';
 
 dotenv.config();
-
 const llmConfig = {
   apiKey: process.env.LLM_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
   baseUrl: process.env.LLM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? '',
   model: process.env.LLM_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
 };
 
-console.log(llmConfig);
-
 const buildFallbackPlan = (prompt, preferences) => {
-  const duration = preferences?.durationDays ?? 3;
+  const duration = preferences.durationDays ?? 3;
   const stopFor = (day) => [
     {
       id: `poi-${day}-1`,
       name: `Signature Experience Day ${day}`,
-      description: `Auto-generated highlight informed by prompt: ${prompt?.slice(0, 60) ?? ''}...`,
+      description: `Auto-generated highlight informed by prompt: ${prompt.slice(0, 60)}...`,
     },
     {
       id: `poi-${day}-2`,
@@ -35,7 +32,7 @@ const buildFallbackPlan = (prompt, preferences) => {
       currency: 'USD',
       amount: 150 * duration,
     },
-    tags: preferences?.travelStyles ?? ['general'],
+    tags: preferences.travelStyles ?? ['general'],
     days: Array.from({ length: duration }).map((_, idx) => ({
       dayNumber: idx + 1,
       title: `Day ${idx + 1}`,
@@ -96,18 +93,45 @@ const parseResponseJson = (response) => {
 
 const buildItineraryPrompt = (prompt, preferences) => {
   const preferenceSummary = JSON.stringify(preferences ?? {}, null, 2);
-  return `You are TourWise, an AI travel planner. Create a structured itinerary tailored to the traveler. Respond ONLY with JSON that matches the following shape:
+  const duration = preferences.durationDays;
+  const durationConstraint = duration
+    ? `DURATION CONSTRAINT: Create an itinerary for EXACTLY ${duration} DAYS. You MUST generate Day 1 through Day ${duration}.`
+    : `DURATION INSTRUCTION: Analyze the user prompt carefully for duration keywords (e.g., "one week", "2 days", "weekend").
+       - If a duration is explicitly mentioned in the prompt, use that EXACT duration.
+       - If NO duration is mentioned, create a highly optimized 1-DAY itinerary.`;
+
+  const lengthInstruction = "IMPORTANT: Keep descriptions concise (max 2 sentences). IF THE TRIP IS 4+ DAYS, LIMIT TO 2-3 STOPS PER DAY to ensure the output fits. You MUST generate an entry for EVERY SINGLE DAY requested. Do NOT bunch stops into fewer days.";
+
+  const isMultiDay = (duration ?? 1) > 1;
+
+  return `You are TourWise, an expert AI travel planner known for accuracy and local insights. Create a structured itinerary tailored to the traveler.
+
+  ${durationConstraint}
+  ${lengthInstruction}
+
+  CRITICAL RULES FOR GOOGLE PLACES API COMPATIBILITY:
+  1. REAL ENTITIES ONLY: Every stop must be a real Google Maps Point of Interest (POI) that can be successfully found via Google Places API.
+  2. EXACT NAMES: Use the exact, official name of the place as it appears on Google Maps (e.g., "Louvre Museum" instead of "Visit the art museum").
+  3. SEARCHABLE FALLBACKS: If you cannot verify a specific restaurant/shop, use a major nearby LANDMARK, SQUARE, or STREET NAME as the 'name' (e.g., "Piazza Navona") so the map pin is accurate, and describe the activity in the 'description'.
+  4. NO FAKE NAMES: Never invent business names. If unsure, default to the nearest verifyable landmark.
+
+  ENRICHMENT RULES:
+  1. CULINARY FOCUS: For lunch and dinner stops, the 'name' MUST be a specific, real restaurant or venue name found on Google Maps. Write the specific dish recommendations in the 'description' or 'notes' field.
+  ${isMultiDay ? `2. ACCOMMODATION: Suggest a REAL, specific hotel name (verifiable on Google Maps) in the "accommodation" object's "name" field, NOT a generic area like "City Center Hotel".` : ''}
+
+  Respond ONLY with JSON that matches the following shape:
 {
   "title": string,
   "summary": string,
   "durationDays": number,
   "budget": { "currency": string, "amount": number, "perPerson"?: number, "notes"?: string },
   "tags": string[],
-  "days": [
+  "days": [ // Must contain exactly ${duration ?? 'the number of days determined by prompt'} items
     {
       "dayNumber": number,
       "title"?: string,
       "summary"?: string,
+      ${isMultiDay ? '"accommodation"?: { "name": string, "location": string, "reason": string },' : ''}
       "stops": [
         {
           "id": string,
@@ -122,7 +146,7 @@ const buildItineraryPrompt = (prompt, preferences) => {
     }
   ]
 }
-Do not add arrivals and departures as itineraries. Offer restaurant's names, cafe's names and places exac names for itanaries. i.e. instead of 'Farewell Dinner', 'Farewell Dinner at ABC restaurat or coffee'
+Do not add arrivals and departures as itinerary stops. Ensure all place names are exact and searchable on Google Maps.
 Brief: ${prompt}
 Preferences JSON: ${preferenceSummary}`;
 };
@@ -134,7 +158,7 @@ Question: ${question}
 Context: ${contextBlock}`;
 };
 
-export const requestItineraryPlan = async (prompt, preferences = {}) => {
+export const requestItineraryPlan = async (prompt, preferences) => {
   if (!openAiClient) {
     return buildFallbackPlan(prompt, preferences);
   }
@@ -153,7 +177,7 @@ export const requestItineraryPlan = async (prompt, preferences = {}) => {
   }
 };
 
-export const requestPoiAnswer = async (question, context = {}) => {
+export const requestPoiAnswer = async (question, context) => {
   if (!openAiClient) {
     return {
       answer: `Placeholder answer for: "${question}". Configure LLM credentials to enable real responses.`,
@@ -175,4 +199,3 @@ export const requestPoiAnswer = async (question, context = {}) => {
     };
   }
 };
-

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
     Alert,
     Badge,
@@ -282,6 +283,69 @@ export default function DashItineraries() {
         }
     };
 
+    const onDragEnd = async (result) => {
+        const { source, destination } = result;
+
+        if (!destination) return;
+        if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+        const sourceDayNum = parseInt(source.droppableId.replace('day-', ''));
+        const destDayNum = parseInt(destination.droppableId.replace('day-', ''));
+
+        // Deep copy for optimistic update
+        const newItinerary = JSON.parse(JSON.stringify(selected));
+        
+        const sourceDay = newItinerary.days.find(d => d.dayNumber === sourceDayNum);
+        const destDay = newItinerary.days.find(d => d.dayNumber === destDayNum);
+
+        if (!sourceDay || !destDay) return;
+
+        const [movedStop] = sourceDay.stops.splice(source.index, 1);
+        destDay.stops.splice(destination.index, 0, movedStop);
+
+        setSelected(newItinerary);
+
+        try {
+            let url = '';
+            let body = {};
+
+            if (sourceDayNum === destDayNum) {
+                 url = `/api/ai/itineraries/${selected._id}/reorder`;
+                 body = {
+                    dayNumber: sourceDayNum,
+                    oldIndex: source.index,
+                    newIndex: destination.index
+                 };
+            } else {
+                 url = `/api/ai/itineraries/${selected._id}/move`;
+                 body = {
+                    fromDay: sourceDayNum,
+                    toDay: destDayNum,
+                    fromIndex: source.index,
+                    toIndex: destination.index
+                 };
+            }
+
+            const res = await fetch(url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body)
+            });
+
+            if (!res.ok) {
+                 // Revert on error by reloading
+                 fetchItineraryDetail(selected._id);
+                 const data = await res.json();
+                 setDetailError(data.message || "Failed to update order");
+            }
+        } catch (error) {
+            console.error(error);
+            fetchItineraryDetail(selected._id);
+            setDetailError("Network error during reorder");
+        }
+    };
+
     const stopCount = useMemo(() => {
         if (!selected?.days?.length) return 0;
         return selected.days.reduce((acc, day) => acc + (day?.stops?.length || 0), 0);
@@ -467,52 +531,75 @@ export default function DashItineraries() {
                         </Card>
 
                         <div className='space-y-4'>
-                            {selected.days?.map((day) => (
-                                <Card key={day.dayNumber} className='shadow-sm'>
-                                    <div className='flex justify-between items-center'>
-                                        <div>
-                                            <p className='text-xs text-gray-500'>Day {day.dayNumber}</p>
-                                            <h5 className='text-lg font-semibold text-gray-900 dark:text-gray-50'>
-                                                {day.title || `Day ${day.dayNumber}`}
-                                            </h5>
-                                            <p className='text-sm text-gray-600 dark:text-gray-300'>{day.summary}</p>
-                                        </div>
-                                        <Badge color='purple'>{day.stops?.length || 0} stops</Badge>
-                                    </div>
-                                    <div className='mt-4 space-y-3'>
-                                        {day.stops?.map((stop) => (
-                                            <div
-                                                key={stop.id || stop.name}
-                                                className='border border-gray-200 dark:border-gray-700 rounded-lg p-3 flex flex-col gap-2'
-                                            >
-                                                <div className='flex items-start justify-between gap-2'>
-                                                    <div>
-                                                        <p className='font-medium text-gray-900 dark:text-gray-50'>
-                                                            {stop.name}
-                                                        </p>
-                                                        <p className='text-xs text-gray-500'>
-                                                            {stop.location?.city || stop.location?.address || '—'}
-                                                        </p>
-                                                    </div>
-                                                    <Button
-                                                        size='xs'
-                                                        color='light'
-                                                        onClick={() => openChatForStop(stop)}
-                                                    >
-                                                        <HiOutlineChatBubbleBottomCenterText className='mr-1 h-4 w-4' />
-                                                        Ask AI
-                                                    </Button>
-                                                </div>
-                                                {stop.description && (
-                                                    <p className='text-sm text-gray-600 dark:text-gray-300'>
-                                                        {stop.description}
-                                                    </p>
-                                                )}
+                            <DragDropContext onDragEnd={onDragEnd}>
+                                {selected.days?.map((day) => (
+                                    <Card key={day.dayNumber} className='shadow-sm'>
+                                        <div className='flex justify-between items-center'>
+                                            <div>
+                                                <p className='text-xs text-gray-500'>Day {day.dayNumber}</p>
+                                                <h5 className='text-lg font-semibold text-gray-900 dark:text-gray-50'>
+                                                    {day.title || `Day ${day.dayNumber}`}
+                                                </h5>
+                                                <p className='text-sm text-gray-600 dark:text-gray-300'>{day.summary}</p>
                                             </div>
-                                        ))}
-                                    </div>
-                                </Card>
-                            ))}
+                                            <Badge color='purple'>{day.stops?.length || 0} stops</Badge>
+                                        </div>
+                                        
+                                        <Droppable droppableId={`day-${day.dayNumber}`}>
+                                            {(provided) => (
+                                                <div
+                                                    ref={provided.innerRef}
+                                                    {...provided.droppableProps}
+                                                    className='mt-4 space-y-3 min-h-[20px]'
+                                                >
+                                                    {day.stops?.map((stop, index) => (
+                                                        <Draggable 
+                                                            key={stop._id || `${day.dayNumber}-${index}-${stop.name}`} 
+                                                            draggableId={stop._id || `${day.dayNumber}-${index}-${stop.name}`} 
+                                                            index={index}
+                                                        >
+                                                            {(provided, snapshot) => (
+                                                                <div
+                                                                    ref={provided.innerRef}
+                                                                    {...provided.draggableProps}
+                                                                    {...provided.dragHandleProps}
+                                                                    className={`border border-gray-200 dark:border-gray-700 rounded-lg p-3 flex flex-col gap-2 bg-white dark:bg-gray-800 ${snapshot.isDragging ? 'shadow-lg ring-2 ring-purple-500 z-10' : ''}`}
+                                                                    style={{ ...provided.draggableProps.style }}
+                                                                >
+                                                                    <div className='flex items-start justify-between gap-2'>
+                                                                        <div>
+                                                                            <p className='font-medium text-gray-900 dark:text-gray-50'>
+                                                                                {stop.name}
+                                                                            </p>
+                                                                            <p className='text-xs text-gray-500'>
+                                                                                {stop.location?.city || stop.location?.address || '—'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <Button
+                                                                            size='xs'
+                                                                            color='light'
+                                                                            onClick={() => openChatForStop(stop)}
+                                                                        >
+                                                                            <HiOutlineChatBubbleBottomCenterText className='mr-1 h-4 w-4' />
+                                                                            Ask AI
+                                                                        </Button>
+                                                                    </div>
+                                                                    {stop.description && (
+                                                                        <p className='text-sm text-gray-600 dark:text-gray-300'>
+                                                                            {stop.description}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </Draggable>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                </div>
+                                            )}
+                                        </Droppable>
+                                    </Card>
+                                ))}
+                            </DragDropContext>
                         </div>
                     </>
                 )}
@@ -669,4 +756,3 @@ export default function DashItineraries() {
         </div>
     );
 }
-
