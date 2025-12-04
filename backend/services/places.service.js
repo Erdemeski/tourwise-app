@@ -29,6 +29,7 @@ export const searchPlace = async (query, locationContext = "") => {
             location: place.geometry.location,
             placeId: place.place_id,
             rating: place.rating || 0,
+            priceLevel: place.price_level,
             photoReference: place.photos?.[0]?.photo_reference || null,
             types: place.types || []
         };
