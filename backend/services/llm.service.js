@@ -199,3 +199,66 @@ export const requestPoiAnswer = async (question, context) => {
     };
   }
 };
+
+export const analyzeItineraryBudget = async (enrichedPlan) => {
+  if (!openAiClient) {
+    return {
+      currency: 'USD',
+      amount: 0,
+      perPerson: 0,
+      notes: 'Budget analysis unavailable (LLM offline).',
+    };
+  }
+
+  const prompt = `
+  You are a travel budget expert. Analyze this itinerary and estimate a realistic budget.
+  
+  INPUT DATA:
+  - Duration: ${enrichedPlan.durationDays} days
+  - Travelers: 1 person
+  - Itinerary JSON: ${JSON.stringify(enrichedPlan.days).slice(0, 3000)}... (truncated for token limits)
+  
+  CRITICAL INSTRUCTIONS FOR COST OF LIVING ADJUSTMENT:
+  1. **Identify the City/Country Economic Tier:**
+     - Tier 1 (Very High Cost): Switzerland, Iceland, NYC, Singapore, Norway. (e.g. Lunch: $30+, Hotel: $200+)
+     - Tier 2 (High Cost): USA, UK, Western Europe (France, Germany), Dubai. (e.g. Lunch: $20+, Hotel: $150+)
+     - Tier 3 (Moderate Cost): Southern Europe (Italy, Spain, Greece). (e.g. Lunch: $15+, Hotel: $100+)
+     - Tier 4 (Low/Medium Cost): Turkey, Southeast Asia, Eastern Europe. (e.g. Lunch: $5-10, Hotel: $50-80)
+
+  2. **Interpret "Price Level" (0-4) LOCALLY:**
+     - A "Price Level 3" (Expensive) restaurant in Istanbul (Tier 4) might cost $40.
+     - A "Price Level 3" (Expensive) restaurant in Zurich (Tier 1) might cost $120.
+     - DO NOT treat Price Level 3 as a fixed global dollar amount. Adjust based on the Tier.
+
+  3. **Estimate Costs:**
+     - **Accommodation:** Assume standard 3-4 star hotel. Adjust heavily by Tier.
+     - **Food:** Calculate based on provided POIs. If no POI for a meal, assume average local cost.
+     - **Transport:** Local transit cost relative to the city (Metro vs Taxi).
+     - **Museums/Tickets:** Use realistic entry fees for major landmarks (e.g. Topkapi Palace is expensive for tourists (~$45), but general Istanbul costs are low).
+
+  OUTPUT JSON ONLY:
+  {
+    "currency": "USD",
+    "amount": number, // Total estimated cost for the whole trip
+    "perPerson": number, // Same as amount (since we calculate for 1)
+    "notes": "Explain the calculation logic based on the country's cost tier (e.g. 'Estimated for High Cost Tier (Zurich). Includes premium dining...')."
+  }
+  `;
+
+  try {
+    const response = await openAiClient.responses.create({
+      model: llmConfig.model,
+      input: prompt,
+      stream: false,
+    });
+    return parseResponseJson(response);
+  } catch (error) {
+    console.error('Budget analysis failed', error);
+    return {
+      currency: 'USD',
+      amount: 0,
+      perPerson: 0,
+      notes: 'Budget estimation failed due to service error.',
+    };
+  }
+};

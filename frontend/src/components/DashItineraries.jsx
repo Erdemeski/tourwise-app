@@ -20,7 +20,8 @@ import {
     HiOutlineMap,
     HiOutlinePencilSquare,
     HiOutlineSparkles,
-    HiOutlineTrash
+    HiOutlineTrash,
+    HiOutlineCurrencyDollar
 } from 'react-icons/hi2';
 import ItineraryMap from './ItineraryMap';
 
@@ -473,6 +474,36 @@ export default function DashItineraries() {
                                     tab.
                                 </Alert>
                             )}
+
+                            {/* Budget Info Block */}
+                            {selected.budget && (
+                                <Card className='mt-4 border-l-4 border-l-green-500 bg-green-50 dark:bg-green-900/20'>
+                                    <div className='flex items-start gap-3'>
+                                        <div className='p-2 bg-green-100 dark:bg-green-800 rounded-full'>
+                                            <HiOutlineCurrencyDollar className='h-6 w-6 text-green-600 dark:text-green-300' />
+                                        </div>
+                                        <div>
+                                            <h4 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
+                                                Estimated Budget
+                                            </h4>
+                                            <div className='flex items-baseline gap-2 mt-1'>
+                                                <span className='text-2xl font-bold text-green-700 dark:text-green-400'>
+                                                    {selected.budget.currency} {selected.budget.amount}
+                                                </span>
+                                                <span className='text-sm text-gray-500 dark:text-gray-400'>
+                                                    (approx. {selected.budget.currency} {selected.budget.perPerson} per person)
+                                                </span>
+                                            </div>
+                                            {selected.budget.notes && (
+                                                <p className='text-sm text-gray-600 dark:text-gray-300 mt-2 italic'>
+                                                    "{selected.budget.notes}"
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </Card>
+                            )}
+
                             <div className='grid md:grid-cols-2 gap-4 mt-6'>
                                 <div>
                                     <Label>Title</Label>

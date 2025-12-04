@@ -6,7 +6,7 @@ import {
     generationSchema,
     updateAiItinerarySchema
 } from "../utils/aiValidators.js";
-import { requestItineraryPlan, requestPoiAnswer } from "../services/llm.service.js";
+import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget } from "../services/llm.service.js";
 import { searchPlace, getPlacePhotoUrl } from "../services/places.service.js";
 import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
 
@@ -101,9 +101,13 @@ export const generateAiItinerary = async (req, res, next) => {
         console.log("2. Enriching plan with Google Places data...");
         const enrichedPlan = await enrichItineraryWithPlaces(plan);
 
-        console.log("3. Saving itinerary to database...");
+        console.log("3. Analyzing budget...");
+        const budgetAnalysis = await analyzeItineraryBudget(enrichedPlan);
+
+        console.log("4. Saving itinerary to database...");
         const normalizedPlan = aiItinerarySchema.parse({
             ...enrichedPlan,
+            budget: budgetAnalysis,
             visibility: "private",
         });
 
