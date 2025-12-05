@@ -113,7 +113,9 @@ export default function DashboardMain() {
                         <Table.Head>
                             <Table.HeadCell>Title</Table.HeadCell>
                             <Table.HeadCell>Owner</Table.HeadCell>
+                            <Table.HeadCell>Itinerary</Table.HeadCell>
                             <Table.HeadCell>Visibility</Table.HeadCell>
+                            <Table.HeadCell>Status</Table.HeadCell>
                         </Table.Head>
                         {routes.map((route) => (
                             <Table.Body key={route._id} className='divide-y'>
@@ -123,10 +125,28 @@ export default function DashboardMain() {
                                             {route.title}
                                         </Link>
                                     </Table.Cell>
-                                    <Table.Cell>{route.userId}</Table.Cell>
+                                    <Table.Cell>{route.owner?.username || route.userId}</Table.Cell>
                                     <Table.Cell>
-                                        <Badge color={route.visibility === 'public' ? 'success' : 'gray'}>
-                                            {route.visibility}
+                                        {route.itineraryStatus ? (
+                                            <Badge color={route.itineraryStatus === 'finished' ? 'info' : 'gray'}>
+                                                {route.itineraryStatus}
+                                            </Badge>
+                                        ) : (
+                                            <span className='text-gray-400 text-sm'>—</span>
+                                        )}
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        {route.status === 'shared' ? (
+                                            <Badge color={route.visibility === 'public' ? 'success' : 'gray'}>
+                                                {route.visibility}
+                                            </Badge>
+                                        ) : (
+                                            <span className='text-gray-400 text-sm'>—</span>
+                                        )}
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        <Badge color={route.status === 'shared' ? 'success' : 'gray'}>
+                                            {route.status === 'shared' ? 'shared' : 'unshared'}
                                         </Badge>
                                     </Table.Cell>
                                 </Table.Row>
@@ -146,7 +166,7 @@ export default function DashboardMain() {
                         <Table.Head>
                             <Table.HeadCell>Title</Table.HeadCell>
                             <Table.HeadCell>Owner</Table.HeadCell>
-                            <Table.HeadCell>Visibility</Table.HeadCell>
+                            <Table.HeadCell>Status</Table.HeadCell>
                         </Table.Head>
                         {itineraries.map((item) => (
                             <Table.Body key={item._id} className='divide-y'>
@@ -156,8 +176,11 @@ export default function DashboardMain() {
                                     </Table.Cell>
                                     <Table.Cell>{item.userId}</Table.Cell>
                                     <Table.Cell>
-                                        <Badge color={item.visibility === 'shared' ? 'success' : 'gray'}>
-                                            {item.visibility}
+                                        <Badge color={
+                                            item.status === 'finished' ? 'info' :
+                                            item.status === 'archived' ? 'failure' : 'gray'
+                                        }>
+                                            {item.status || 'draft'}
                                         </Badge>
                                     </Table.Cell>
                                 </Table.Row>

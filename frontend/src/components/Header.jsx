@@ -152,13 +152,18 @@ export default function Header() {
                                     <Dropdown.Divider />
                                 </div>
                             )}
-                            <Link to={'/dashboard?tab=profile'}>
+                            <Link to={`/user/${currentUser.username}`}>
                                 <Dropdown.Item>Profile</Dropdown.Item>
                             </Link>
                             {!currentUser.isAdmin && (
-                                <Link to={'/dashboard?tab=bookings'}>
-                                    <Dropdown.Item>Your Routes</Dropdown.Item>
-                                </Link>
+                                <>
+                                    <Link to={'/my-routes'}>
+                                        <Dropdown.Item>Your Routes</Dropdown.Item>
+                                    </Link>
+                                    <Link to={'/my-itineraries'}>
+                                        <Dropdown.Item>Your Itineraries</Dropdown.Item>
+                                    </Link>
+                                </>
                             )}
                             <Dropdown.Divider />
                             <Dropdown.Item onClick={() => setShowSignout(true)}>Sign Out</Dropdown.Item>
@@ -172,35 +177,35 @@ export default function Header() {
                     <NavbarToggle />
                 </div >
 
-                    <Navbar.Collapse>
-                        <Navbar.Link active={path === "/"} as={'div'}>
-                            <Link to='/' onClick={() => setSearchTerm('')}>
-                                Home
-                            </Link>
-                        </Navbar.Link>
-                        <Navbar.Link active={path === "/explore"} as={'div'}>
-                            <Link to='/explore' onClick={() => setSearchTerm('')}>
-                                Explore Routes
-                            </Link>
-                        </Navbar.Link>
-                        <Navbar.Link active={path === "/about" || path === "/contact"} as={'div'}>
-                            <div onClick={(e) => e.stopPropagation()}>
-                                <Dropdown label="About" className='z-50' inline>
-                                    <Dropdown.Item className={path === "/about" ? 'dark:bg-slate-600 bg-gray-100' : ''}>
-                                        <Link to='/about' onClick={() => { setSearchTerm(''); }}>
-                                            About Us
-                                        </Link>
-                                    </Dropdown.Item>
-                                    <Dropdown.Item className={path === "/contact" ? 'dark:bg-slate-600 bg-gray-100' : ''}>
-                                        <Link to='/contact' onClick={() => { setSearchTerm(''); }}>
-                                            Contact Us
-                                        </Link>
-                                    </Dropdown.Item>
-                                </Dropdown>
-                            </div>
-                        </Navbar.Link>
-                        <div className='flex justify-center sm:hidden'>
-                            {/*                         <Navbar.Link as={'div'}>
+                <Navbar.Collapse>
+                    <Navbar.Link active={path === "/"} as={'div'}>
+                        <Link to='/' onClick={() => setSearchTerm('')}>
+                            Home
+                        </Link>
+                    </Navbar.Link>
+                    <Navbar.Link active={path === "/explore"} as={'div'}>
+                        <Link to='/explore' onClick={() => setSearchTerm('')}>
+                            Explore Routes
+                        </Link>
+                    </Navbar.Link>
+                    <Navbar.Link active={path === "/about" || path === "/contact"} as={'div'}>
+                        <div onClick={(e) => e.stopPropagation()}>
+                            <Dropdown label="About" className='z-50' inline>
+                                <Dropdown.Item className={path === "/about" ? 'dark:bg-slate-600 bg-gray-100' : ''}>
+                                    <Link to='/about' onClick={() => { setSearchTerm(''); }}>
+                                        About Us
+                                    </Link>
+                                </Dropdown.Item>
+                                <Dropdown.Item className={path === "/contact" ? 'dark:bg-slate-600 bg-gray-100' : ''}>
+                                    <Link to='/contact' onClick={() => { setSearchTerm(''); }}>
+                                        Contact Us
+                                    </Link>
+                                </Dropdown.Item>
+                            </Dropdown>
+                        </div>
+                    </Navbar.Link>
+                    <div className='flex justify-center sm:hidden'>
+                        {/*                         <Navbar.Link as={'div'}>
                             <div onClick={(e) => e.stopPropagation()}>
                                 <Dropdown label="Language" className='rounded-full z-50' inline>
                                     <Button className='w-13 h-11 justify-center items-center mx-1' color='gray' pill onClick={() => dispatch(toggleLanguage())}>
@@ -213,20 +218,20 @@ export default function Header() {
                             </div>
                         </Navbar.Link>
  */}
-                            {/*                         <Navbar.Link as={'div'}>
+                        {/*                         <Navbar.Link as={'div'}>
  */}                            <div onClick={(e) => e.stopPropagation()}>
-                                {/*                                 <Dropdown label="Theme" className='rounded-full z-50' inline>
+                            {/*                                 <Dropdown label="Theme" className='rounded-full z-50' inline>
                                     <Button className='w-13 h-11 justify-center items-center mx-1' color='gray' pill onClick={() => dispatch(toggleTheme())}>
                                         {theme === 'light' ? <FaSun /> : <FaMoon />}
                                     </Button>
                                 </Dropdown>
  */}
 
-                                <AnimatedThemeToggler className='w-13 h-11' />
-                            </div>
-                            {/*                         </Navbar.Link>
+                            <AnimatedThemeToggler className='w-13 h-11' />
+                        </div>
+                        {/*                         </Navbar.Link>
  */}                    </div>
-                    </Navbar.Collapse>
+                </Navbar.Collapse>
             </Navbar >
 
             <Modal show={showSignout} onClose={() => setShowSignout(false)} popup size='md'>

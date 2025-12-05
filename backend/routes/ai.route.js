@@ -31,3 +31,6 @@ router.post("/chatbot", verifyToken, askItineraryChatbot);
 
 export default router;
 
+
+
+

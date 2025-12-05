@@ -74,6 +74,7 @@ export const createRoute = async (req, res, next) => {
             title,
             summary,
             visibility,
+            status: 'draft', // New routes start as draft
             slug,
             coverImage,
             gallery: sanitizeArray(gallery),
@@ -128,6 +129,119 @@ const buildNarrativeFromDays = (days = []) => {
         .join("\n\n");
 };
 
+const upsertRouteFromItinerary = async ({
+    baseItinerary,
+    userId,
+    payload,
+    sharePublicly = false,
+}) => {
+    const {
+        title,
+        summary,
+        visibility = "private",
+        coverImage,
+        gallery,
+        tags,
+        terrainTypes,
+        season,
+        startLocation,
+        endLocation,
+        distanceKm,
+        durationDays,
+        overview,
+        itineraryNarrative,
+        highlights,
+        tips,
+        allowForks = true,
+        allowComments = true,
+    } = payload;
+
+    const derivedWaypoints =
+        Array.isArray(baseItinerary.waypointList) && baseItinerary.waypointList.length
+            ? baseItinerary.waypointList
+            : mapDaysToWaypointList(baseItinerary.days);
+
+    const derivedTitle = title || baseItinerary.title;
+    const derivedSummary = summary || baseItinerary.summary;
+    if (!derivedTitle || !derivedSummary) {
+        throw errorHandler(400, "Title and summary are required to publish a route");
+    }
+
+    // Try to reuse an existing route for this itinerary (avoid duplicates)
+    let existingRoute = await Route.findOne({
+        userId,
+        sourceItineraryId: baseItinerary._id.toString(),
+    });
+
+    let slug;
+    if (existingRoute) {
+        slug = existingRoute.slug;
+    } else {
+        const slugCandidate = buildSlug(derivedTitle);
+        slug = slugCandidate;
+        let collisionCount = 0;
+        while (await Route.findOne({ slug })) {
+            collisionCount += 1;
+            slug = `${slugCandidate}-${collisionCount}`;
+        }
+    }
+
+    const narrative = itineraryNarrative || buildNarrativeFromDays(baseItinerary.days);
+    const sanitizedGallery = sanitizeArray(gallery?.length ? gallery : baseItinerary.gallery);
+    const sanitizedTags = sanitizeArray(tags?.length ? tags : baseItinerary.tags);
+    const sanitizedTerrain = sanitizeArray(terrainTypes);
+    const firstWaypoint = derivedWaypoints[0];
+    const lastWaypoint = derivedWaypoints[derivedWaypoints.length - 1];
+
+    const finalVisibility = sharePublicly ? 'public' : visibility || 'private';
+    const finalStatus = 'shared';
+
+    const routePayload = {
+        userId,
+        title: derivedTitle,
+        summary: derivedSummary,
+        visibility: finalVisibility,
+        status: finalStatus,
+        slug,
+        coverImage: coverImage || baseItinerary.coverImage,
+        gallery: sanitizedGallery,
+        tags: sanitizedTags,
+        terrainTypes: sanitizedTerrain,
+        season: season || baseItinerary.season || "all",
+        startLocation: startLocation || firstWaypoint?.location || "",
+        endLocation: endLocation || lastWaypoint?.location || "",
+        distanceKm: typeof distanceKm === "number" ? distanceKm : 0,
+        durationDays:
+            durationDays ??
+            baseItinerary.durationDays ??
+            (Array.isArray(baseItinerary.days) ? baseItinerary.days.length : 0),
+        overview: overview || baseItinerary.summary,
+        itinerary: narrative,
+        highlights: highlights || "",
+        tips: tips || "",
+        waypointList: derivedWaypoints,
+        allowForks,
+        allowComments,
+        sourceRouteId: null,
+        sourceItineraryId: baseItinerary._id.toString(),
+    };
+
+    let savedRoute;
+    if (existingRoute) {
+        Object.assign(existingRoute, routePayload);
+        savedRoute = await existingRoute.save();
+    } else {
+        const newRoute = new Route(routePayload);
+        savedRoute = await newRoute.save();
+    }
+
+    // Keep itinerary status as finished, only update publishedRouteId
+    baseItinerary.publishedRouteId = savedRoute._id.toString();
+    await baseItinerary.save();
+
+    return savedRoute;
+};
+
 export const createRouteFromItinerary = async (req, res, next) => {
     try {
         if (!req.user) {
@@ -177,70 +291,31 @@ export const createRouteFromItinerary = async (req, res, next) => {
             return next(errorHandler(403, "You are not allowed to publish this itinerary"));
         }
 
-        const derivedWaypoints =
-            Array.isArray(baseItinerary.waypointList) && baseItinerary.waypointList.length
-                ? baseItinerary.waypointList
-                : mapDaysToWaypointList(baseItinerary.days);
-
-        const derivedTitle = title || baseItinerary.title;
-        const derivedSummary = summary || baseItinerary.summary;
-
-        if (!derivedTitle || !derivedSummary) {
-            return next(errorHandler(400, "Title and summary are required to publish a route"));
-        }
-
-        const slugCandidate = buildSlug(derivedTitle);
-        let slug = slugCandidate;
-        let collisionCount = 0;
-        while (await Route.findOne({ slug })) {
-            collisionCount += 1;
-            slug = `${slugCandidate}-${collisionCount}`;
-        }
-
-        const narrative = itineraryNarrative || buildNarrativeFromDays(baseItinerary.days);
-        const sanitizedGallery = sanitizeArray(gallery?.length ? gallery : baseItinerary.gallery);
-        const sanitizedTags = sanitizeArray(tags?.length ? tags : baseItinerary.tags);
-        const sanitizedTerrain = sanitizeArray(terrainTypes);
-        const firstWaypoint = derivedWaypoints[0];
-        const lastWaypoint = derivedWaypoints[derivedWaypoints.length - 1];
-
-        const newRoute = new Route({
+        const savedRoute = await upsertRouteFromItinerary({
+            baseItinerary,
             userId: req.user.id,
-            title: derivedTitle,
-            summary: derivedSummary,
-            visibility,
-            slug,
-            coverImage: coverImage || baseItinerary.coverImage,
-            gallery: sanitizedGallery,
-            tags: sanitizedTags,
-            terrainTypes: sanitizedTerrain,
-            season: season || baseItinerary.season || "all",
-            startLocation: startLocation || firstWaypoint?.location || "",
-            endLocation: endLocation || lastWaypoint?.location || "",
-            distanceKm: typeof distanceKm === "number" ? distanceKm : 0,
-            durationDays:
-                durationDays ??
-                baseItinerary.durationDays ??
-                (Array.isArray(baseItinerary.days) ? baseItinerary.days.length : 0),
-            overview: overview || baseItinerary.summary,
-            itinerary: narrative,
-            highlights: highlights || "",
-            tips: tips || "",
-            waypointList: derivedWaypoints,
-            allowForks,
-            allowComments,
-            sourceRouteId: null,
-            sourceItineraryId: baseItinerary._id.toString(),
+            payload: {
+                title,
+                summary,
+                visibility,
+                coverImage,
+                gallery,
+                tags,
+                terrainTypes,
+                season,
+                startLocation,
+                endLocation,
+                distanceKm,
+                durationDays,
+                overview,
+                itineraryNarrative,
+                highlights,
+                tips,
+                allowForks,
+                allowComments,
+            },
+            sharePublicly,
         });
-
-        const savedRoute = await newRoute.save();
-
-        baseItinerary.status = "published";
-        baseItinerary.publishedRouteId = savedRoute._id.toString();
-        if (sharePublicly) {
-            baseItinerary.visibility = "shared";
-        }
-        await baseItinerary.save();
 
         res.status(201).json(savedRoute);
     } catch (error) {
@@ -248,7 +323,7 @@ export const createRouteFromItinerary = async (req, res, next) => {
     }
 };
 
-const buildRoutesQuery = (req) => {
+const buildRoutesQuery = async (req) => {
     const query = { isArchived: false };
     const viewerId = req.user?.id;
     const isAdmin = req.user?.isAdmin === true;
@@ -265,18 +340,58 @@ const buildRoutesQuery = (req) => {
     if (req.query.userId) {
         query.userId = req.query.userId;
         if (req.query.userId === viewerId || isAdmin) {
+            // Owner or admin can see all routes, filter by visibility/status if specified
             if (req.query.visibility && req.query.visibility !== "all") {
                 query.visibility = req.query.visibility;
             }
+            // Allow filtering by status for own routes
+            if (req.query.status) {
+                query.status = req.query.status;
+            }
         } else {
-            query.visibility = "public";
+            // For other users, only show public shared routes or private shared (showcase) routes
+            // Don't override if visibility/status are already set
+            if (!query.$or) {
+                query.$or = [
+                    { visibility: "public", status: "shared" },
+                    { visibility: "private", status: "shared" },
+                ];
+            }
         }
     } else if (!isAdmin && !req.query.routeId) {
+        // For public routes, only show shared routes
         query.visibility = "public";
+        query.status = "shared";
+    } else if (isAdmin && !req.query.userId && !req.query.routeId) {
+        // Admin can see all routes when no specific filters
+        // No additional filters needed
     }
 
-    if (req.query.visibility && req.query.visibility !== "all") {
+    // Apply visibility filter if specified and not already set by userId logic
+    if (req.query.visibility && req.query.visibility !== "all" && !query.$or) {
         query.visibility = req.query.visibility;
+    }
+
+    // Apply status filter if specified and not already set by userId logic
+    if (req.query.status && !query.$or) {
+        query.status = req.query.status;
+    }
+
+    // Filter by following users if requested
+    if (req.query.onlyFollowing === 'true' && viewerId) {
+        const currentUser = await User.findById(viewerId);
+        if (currentUser && currentUser.following && currentUser.following.length > 0) {
+            // If userId is already set, combine with $in
+            if (query.userId) {
+                const existingUserId = query.userId;
+                query.userId = { $in: currentUser.following.filter(id => id.toString() === existingUserId) };
+            } else {
+                query.userId = { $in: currentUser.following };
+            }
+        } else {
+            // If user is not following anyone, return empty results
+            query.userId = { $in: [] };
+        }
     }
 
     if (req.query.tag) {
@@ -308,11 +423,12 @@ const enrichRoutesWithMeta = async (routesDocs = []) => {
     const plainRoutes = routesDocs.map((route) => route.toObject());
     const userIds = [...new Set(plainRoutes.map((route) => route.userId).filter(Boolean))];
     const routeIds = plainRoutes.map((route) => route._id.toString());
+    const itineraryIds = [...new Set(plainRoutes.map((route) => route.sourceItineraryId).filter(Boolean))];
 
-    const [users, commentsGroup] = await Promise.all([
+    const [users, commentsGroup, itineraries] = await Promise.all([
         userIds.length
             ? User.find({ _id: { $in: userIds } })
-                .select("_id username firstName lastName profilePicture")
+                .select("_id username firstName lastName profilePicture isAdmin")
                 .lean()
             : [],
         routeIds.length
@@ -320,6 +436,11 @@ const enrichRoutesWithMeta = async (routesDocs = []) => {
                 { $match: { routeId: { $in: routeIds } } },
                 { $group: { _id: "$routeId", count: { $sum: 1 } } },
             ])
+            : [],
+        itineraryIds.length
+            ? Itinerary.find({ _id: { $in: itineraryIds } })
+                .select("_id status")
+                .lean()
             : [],
     ]);
 
@@ -333,7 +454,15 @@ const enrichRoutesWithMeta = async (routesDocs = []) => {
                 lastName: user.lastName,
                 profilePicture: user.profilePicture,
                 fullName: `${user.firstName} ${user.lastName}`,
+                isAdmin: user.isAdmin || false,
             },
+        ])
+    );
+
+    const itineraryMap = new Map(
+        itineraries.map((itinerary) => [
+            itinerary._id.toString(),
+            itinerary.status || 'draft',
         ])
     );
 
@@ -347,6 +476,8 @@ const enrichRoutesWithMeta = async (routesDocs = []) => {
         owner: userMap.get(route.userId) || null,
         commentsCount: commentCountMap[route._id.toString()] || 0,
         likesCount: Array.isArray(route.likes) ? route.likes.length : 0,
+        isForked: Boolean(route.sourceRouteId),
+        itineraryStatus: route.sourceItineraryId ? itineraryMap.get(route.sourceItineraryId) || null : null,
     }));
 };
 
@@ -357,7 +488,7 @@ export const getRoutes = async (req, res, next) => {
         const sortField = req.query.sortBy || "createdAt";
         const sortDirection = req.query.order === "asc" ? 1 : -1;
 
-        const query = buildRoutesQuery(req);
+        const query = await buildRoutesQuery(req);
 
         let routes;
         let totalRoutes;
@@ -485,6 +616,16 @@ export const deleteRoute = async (req, res, next) => {
             return next(errorHandler(403, "You are not allowed to delete this route"));
         }
 
+        // If this route was created from an itinerary, revert that itinerary to shareable state
+        if (route.sourceItineraryId) {
+            const relatedItinerary = await Itinerary.findById(route.sourceItineraryId);
+            if (relatedItinerary) {
+                relatedItinerary.publishedRouteId = null;
+                relatedItinerary.status = "finished";
+                await relatedItinerary.save();
+            }
+        }
+
         await Comment.deleteMany({ routeId });
         await Route.findByIdAndDelete(routeId);
 
@@ -552,6 +693,7 @@ export const forkRoute = async (req, res, next) => {
             title: forkTitle,
             summary: templateRoute.summary,
             visibility: "private",
+            status: "finished",
             slug,
             coverImage: templateRoute.coverImage,
             gallery: templateRoute.gallery,

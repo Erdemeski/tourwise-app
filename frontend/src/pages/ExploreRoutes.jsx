@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import RouteFeedCard from '../components/RouteFeedCard';
 import RouteFeedCardSkeleton from '../components/RouteFeedCardSkeleton';
 import FilterPanel from '../components/FilterPanel';
@@ -11,10 +12,12 @@ const FEED_BATCH_SIZE = 5;
 export default function ExploreRoutes() {
     const location = useLocation();
     const navigate = useNavigate();
+    const { currentUser } = useSelector((state) => state.user);
     const urlParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
     const searchTerm = urlParams.get('searchTerm') || '';
     const order = urlParams.get('order') || 'desc';
     const tag = urlParams.get('tag') || '';
+    const onlyFollowing = urlParams.get('onlyFollowing') === 'true';
 
     const [routes, setRoutes] = useState([]);
     const [highlightRoutes, setHighlightRoutes] = useState([]);
@@ -45,6 +48,11 @@ export default function ExploreRoutes() {
         params.set('startIndex', startIndex.toString());
         params.set('limit', FEED_BATCH_SIZE.toString());
 
+        // Add onlyFollowing filter if enabled
+        if (onlyFollowing && currentUser?._id) {
+            params.set('onlyFollowing', 'true');
+        }
+
         try {
             fetchingRef.current = true;
             if (reset) {
@@ -54,7 +62,9 @@ export default function ExploreRoutes() {
                 setIsFetchingMore(true);
             }
 
-            const res = await fetch(`/api/routes?${params.toString()}`);
+            const res = await fetch(`/api/routes?${params.toString()}`, {
+                credentials: onlyFollowing ? 'include' : undefined,
+            });
             const data = await res.json();
 
             if (!res.ok) {
@@ -92,7 +102,7 @@ export default function ExploreRoutes() {
             }
             fetchingRef.current = false;
         }
-    }, [location.search]);
+    }, [location.search, onlyFollowing, currentUser?._id]);
 
     useEffect(() => {
         setRoutes([]);
@@ -157,12 +167,17 @@ export default function ExploreRoutes() {
         setSuggestedCreators(uniqueCreators.slice(0, 3));
     }, [highlightRoutes, routes]);
 
-    const handleSearch = (newSearchTerm = searchTerm, newOrder = order, newTag = tag) => {
+    const handleSearch = (newSearchTerm = searchTerm, newOrder = order, newTag = tag, newOnlyFollowing = onlyFollowing) => {
         const params = new URLSearchParams();
         if (newSearchTerm) params.set('searchTerm', newSearchTerm);
         params.set('order', newOrder);
         if (newTag) params.set('tag', newTag);
+        if (newOnlyFollowing) params.set('onlyFollowing', 'true');
         navigate(`/explore?${params.toString()}`);
+    };
+
+    const setOnlyFollowing = (value) => {
+        handleSearch(searchTerm, order, tag, value);
     };
 
     const handleFilterChange = (type, value) => {
@@ -184,6 +199,7 @@ export default function ExploreRoutes() {
                                 searchTerm={searchTerm}
                                 order={order}
                                 tag={tag}
+                                onlyFollowing={onlyFollowing}
                                 handleSearch={(e) => {
                                     e.preventDefault();
                                     handleSearch();
@@ -191,6 +207,7 @@ export default function ExploreRoutes() {
                                 setSearchTerm={(term) => handleSearch(term, order, tag)}
                                 setOrder={(newOrder) => handleFilterChange('order', newOrder)}
                                 setTag={(newTag) => handleFilterChange('tag', newTag)}
+                                setOnlyFollowing={currentUser?._id ? setOnlyFollowing : undefined}
                             />
                         </div>
                         {/*                         <div className='rounded-3xl border border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 text-white p-6 shadow-md'>

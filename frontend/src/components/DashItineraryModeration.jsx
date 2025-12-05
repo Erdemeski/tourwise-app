@@ -14,6 +14,7 @@ export default function DashItineraryModeration() {
     const [showModal, setShowModal] = useState(false);
     const [itineraryToDelete, setItineraryToDelete] = useState(null);
     const [error, setError] = useState(null);
+    const [statusLoading, setStatusLoading] = useState(null);
 
     const fetchUsers = async () => {
         try {
@@ -34,17 +35,28 @@ export default function DashItineraryModeration() {
     const fetchItineraries = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/itineraries', { credentials: 'include' });
+            setError(null);
+            // Fetch all AI itineraries for admin moderation
+            const res = await fetch('/api/ai/itineraries', { credentials: 'include' });
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data.message || 'Failed to load itineraries');
             }
-            setItineraries(data.itineraries || []);
+            const allItineraries = Array.isArray(data) ? data : (data.itineraries || []);
+            setItineraries(allItineraries);
+            
+            // Calculate stats
+            const now = new Date();
+            const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+            const lastMonthFinished = allItineraries.filter(
+                (item) => item.status === 'finished' && new Date(item.createdAt) >= oneMonthAgo
+            ).length;
+            
             setStats({
-                total: data.totalItineraries || 0,
-                lastMonth: data.lastMonthItineraries || 0,
+                total: allItineraries.length,
+                lastMonth: lastMonthFinished,
             });
-            setFiltered(data.itineraries || []);
+            setFiltered(allItineraries);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -56,7 +68,6 @@ export default function DashItineraryModeration() {
         if (currentUser?.isAdmin) {
             fetchUsers();
             fetchItineraries();
-            console.log(itineraries);
         } else {
             setLoading(false);
         }
@@ -80,39 +91,61 @@ export default function DashItineraryModeration() {
         );
     }, [search, itineraries, usersLookup]);
 
-    const handleVisibilityToggle = async (itineraryId, visibility) => {
+    const handleStatusToggle = async (itineraryId, status) => {
+        // Toggle between draft and finished, or restore from archived
+        let nextStatus;
+        if (status === 'finished') {
+            nextStatus = 'draft';
+        } else if (status === 'archived') {
+            nextStatus = 'finished';
+        } else {
+            nextStatus = 'finished';
+        }
+        
         try {
-            const res = await fetch(`/api/itineraries/${itineraryId}/visibility`, {
-                method: 'PUT',
+            setStatusLoading(itineraryId);
+            setError(null);
+            const res = await fetch(`/api/ai/itineraries/${itineraryId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
+                body: JSON.stringify({ status: nextStatus }),
             });
+            const data = await res.json();
             if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.message || 'Failed to update visibility');
+                throw new Error(data.message || 'Failed to update status');
             }
-            const updated = await res.json();
             setItineraries((prev) =>
                 prev.map((item) =>
-                    item._id === itineraryId ? { ...item, visibility: updated.visibility } : item
+                    item._id === itineraryId ? { ...item, status: data.status } : item
+                )
+            );
+            setFiltered((prev) =>
+                prev.map((item) =>
+                    item._id === itineraryId ? { ...item, status: data.status } : item
                 )
             );
         } catch (err) {
             setError(err.message);
+        } finally {
+            setStatusLoading(null);
         }
     };
 
     const handleDeleteItinerary = async () => {
         if (!itineraryToDelete) return;
         try {
-            const res = await fetch(`/api/itineraries/${itineraryToDelete}`, {
+            setError(null);
+            const res = await fetch(`/api/ai/itineraries/${itineraryToDelete}`, {
                 method: 'DELETE',
                 credentials: 'include',
             });
-            if (!res.ok) {
+            if (!res.ok && res.status !== 204) {
                 const data = await res.json();
                 throw new Error(data.message || 'Failed to delete itinerary');
             }
             setItineraries((prev) => prev.filter((item) => item._id !== itineraryToDelete));
+            setFiltered((prev) => prev.filter((item) => item._id !== itineraryToDelete));
         } catch (err) {
             setError(err.message);
         } finally {
@@ -146,8 +179,20 @@ export default function DashItineraryModeration() {
                     <p className='text-3xl font-bold text-gray-900 dark:text-white'>{stats.total}</p>
                 </Card>
                 <Card className='min-w-52 bg-white dark:bg-slate-800 shadow-md'>
-                    <h3 className='text-sm text-gray-500 uppercase'>Shared this month</h3>
+                    <h3 className='text-sm text-gray-500 uppercase'>Finished this month</h3>
                     <p className='text-3xl font-bold text-gray-900 dark:text-white'>{stats.lastMonth}</p>
+                </Card>
+                <Card className='min-w-52 bg-white dark:bg-slate-800 shadow-md'>
+                    <h3 className='text-sm text-gray-500 uppercase'>Finished</h3>
+                    <p className='text-3xl font-bold text-gray-900 dark:text-white'>
+                        {itineraries.filter((item) => item.status === 'finished').length}
+                    </p>
+                </Card>
+                <Card className='min-w-52 bg-white dark:bg-slate-800 shadow-md'>
+                    <h3 className='text-sm text-gray-500 uppercase'>Draft</h3>
+                    <p className='text-3xl font-bold text-gray-900 dark:text-white'>
+                        {itineraries.filter((item) => item.status === 'draft' || !item.status).length}
+                    </p>
                 </Card>
             </div>
 
@@ -167,7 +212,7 @@ export default function DashItineraryModeration() {
                         <Table.HeadCell shared='true'>Updated</Table.HeadCell>
                         <Table.HeadCell>Title</Table.HeadCell>
                         <Table.HeadCell>Owner</Table.HeadCell>
-                        <Table.HeadCell>Visibility</Table.HeadCell>
+                        <Table.HeadCell>Source</Table.HeadCell>
                         <Table.HeadCell>Status</Table.HeadCell>
                         <Table.HeadCell className='text-center'>Actions</Table.HeadCell>
                     </Table.Head>
@@ -185,23 +230,39 @@ export default function DashItineraryModeration() {
                                         {owner ? `@${owner.username}` : itinerary.userId}
                                     </Table.Cell>
                                     <Table.Cell>
-                                        <Badge color={itinerary.visibility === 'shared' ? 'success' : 'gray'}>
-                                            {itinerary.visibility}
+                                        <Badge color={itinerary.source === 'ai' ? 'purple' : 'blue'}>
+                                            {itinerary.source || 'route'}
                                         </Badge>
                                     </Table.Cell>
                                     <Table.Cell>
-                                        <Badge color={itinerary.status === 'published' ? 'info' : itinerary.status === 'archived' ? 'failure' : 'gray'}>
-                                            {itinerary.status}
+                                        <Badge color={
+                                            itinerary.status === 'finished' ? 'info' :
+                                            itinerary.status === 'archived' ? 'failure' : 'gray'
+                                        }>
+                                            {itinerary.status || 'draft'}
                                         </Badge>
                                     </Table.Cell>
                                     <Table.Cell className='flex justify-end gap-2'>
-                                        <Button
-                                            size='xs'
-                                            color='light'
-                                            onClick={() => handleVisibilityToggle(itinerary._id, itinerary.visibility)}
-                                        >
-                                            {itinerary.visibility === 'shared' ? 'Make private' : 'Share'}
-                                        </Button>
+                                        {itinerary.status !== 'archived' && (
+                                            <Button
+                                                size='xs'
+                                                color='light'
+                                                onClick={() => handleStatusToggle(itinerary._id, itinerary.status)}
+                                                isProcessing={statusLoading === itinerary._id}
+                                            >
+                                                {itinerary.status === 'finished' ? 'Make draft' : 'Make finished'}
+                                            </Button>
+                                        )}
+                                        {itinerary.status === 'archived' && (
+                                            <Button
+                                                size='xs'
+                                                color='light'
+                                                onClick={() => handleStatusToggle(itinerary._id, 'archived')}
+                                                isProcessing={statusLoading === itinerary._id}
+                                            >
+                                                Restore to finished
+                                            </Button>
+                                        )}
                                         <Button
                                             size='xs'
                                             color='failure'

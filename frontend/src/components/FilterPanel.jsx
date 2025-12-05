@@ -14,10 +14,12 @@ export default function FilterPanel({
     searchTerm,
     order,
     tag,
+    onlyFollowing,
     handleSearch,
     setSearchTerm,
     setOrder,
     setTag,
+    setOnlyFollowing,
 }) {
     const [openSections, setOpenSections] = useState({
         kategori: true,
@@ -65,6 +67,21 @@ export default function FilterPanel({
                     </span>
                 </button>
             </div>
+
+            {/* Only Following Filter */}
+            {setOnlyFollowing && (
+                <div className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+                    <label className="flex items-center space-x-3 cursor-pointer py-2 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+                        <input
+                            type="checkbox"
+                            checked={onlyFollowing || false}
+                            onChange={(e) => setOnlyFollowing(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 dark:border-gray-600 dark:bg-slate-700 dark:focus:ring-blue-600"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Sadece Takip Ettiklerim</span>
+                    </label>
+                </div>
+            )}
 
             {/* Kategori Section */}
             <div className="border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">

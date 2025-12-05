@@ -16,7 +16,7 @@ export default function SignUpPage() {
 
   useEffect(() => {
     if (currentUser) {
-      navigate('/dashboard?tab=profile');
+      navigate(`/user/${currentUser.username}`);
     }
   }, [currentUser, navigate]);
 

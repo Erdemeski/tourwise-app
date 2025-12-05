@@ -15,7 +15,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (currentUser) {
-      navigate('/dashboard?tab=profile');
+      navigate(`/user/${currentUser.username}`);
     }
   }, [currentUser, navigate]);
 

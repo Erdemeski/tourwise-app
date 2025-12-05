@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import { Button, Modal, Spinner, Table } from 'flowbite-react'
 import { HiOutlineExclamationCircle } from 'react-icons/hi'
 import { FaCheck, FaTimes } from "react-icons/fa";
+import { Link } from 'react-router-dom';
 
 export default function DashUsers() {
 
@@ -102,7 +103,9 @@ export default function DashUsers() {
                                         <img src={user.profilePicture} alt={user.username} className='w-10 h-10 object-cover bg-gray-100 rounded-full' />
                                     </Table.Cell>
                                     <Table.Cell>
-                                        {user.username}
+                                        <Link className='text-teal-600 hover:underline' to={`/user/${user.username}`}>
+                                            {user.username}
+                                        </Link>
                                     </Table.Cell>
                                     <Table.Cell>
                                         {user.firstName}

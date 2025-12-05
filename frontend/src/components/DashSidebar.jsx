@@ -71,7 +71,7 @@ export default function DashSidebar() {
                                 <Sidebar.Item active={tab === 'dashboard' || !tab} icon={HiChartPie} as='div'>Dashboard</Sidebar.Item>
                             </Link>
                         )}
-                        <Link to='/dashboard?tab=profile'>
+                        <Link to={`/user/${currentUser.username}`}>
                             <Sidebar.Item active={tab === 'profile'} icon={HiUser} label={currentUser.isAdmin ? 'Admin' : 'User'} labelColor={currentUser.isAdmin ? 'red' : 'dark'} as='div'>Profile</Sidebar.Item>
                         </Link>
                         <Link to='/dashboard?tab=my-routes'>

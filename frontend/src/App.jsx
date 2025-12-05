@@ -5,6 +5,8 @@ import AboutPage from './pages/AboutPage.jsx';
 import SignInPage from './pages/SignInPage.jsx';
 import SignUpPage from './pages/SignUpPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import MyRoutesPage from './pages/MyRoutesPage.jsx';
+import MyItinerariesPage from './pages/MyItinerariesPage.jsx';
 import Header from './components/Header.jsx';
 import Footer from './components/Footer.jsx';
 import PrivateRoute from './components/PrivateRoute.jsx';
@@ -33,8 +35,13 @@ export default function App() {
         <Route path="/sign-in" element={<SignInPage />} />
         <Route path="/sign-up" element={<SignUpPage />} />
 
-        <Route element={<PrivateRoute />}>
+        <Route element={<OnlyAdminPrivateRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
+
+        <Route element={<PrivateRoute />}>
+          <Route path="/my-itineraries" element={<MyItinerariesPage />} />
+          <Route path="/my-routes" element={<MyRoutesPage />} />
           <Route path="/routes/create" element={<CreateRoute />} />
           <Route path="/routes/:routeId/edit" element={<EditRoute />} />
         </Route>
