@@ -133,7 +133,7 @@ export default function ExploreRoutes() {
     const fetchHighlights = useCallback(async () => {
         try {
             const params = new URLSearchParams({
-                limit: '4',
+                limit: '3',
                 sortBy: 'forksCount',
                 order: 'desc',
             });
@@ -276,6 +276,7 @@ export default function ExploreRoutes() {
                     <ExploreSidebar
                         highlightRoutes={highlightRoutes}
                         suggestedCreators={suggestedCreators}
+                        routes={routes}
                     />
                 </div>
             </div>

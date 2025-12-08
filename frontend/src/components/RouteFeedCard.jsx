@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import RouteEventsModal from './RouteEventsModal'; // Modal import edildi
 
 const FALLBACK_COVER = 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80';
+const buildAvatarFallback = (name = '') =>
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Gezgin')}&background=0ea5e9&color=fff&size=96&font-size=0.38`;
 
 const formatRelativeTime = (value) => {
     if (!value) return 'az önce';
@@ -110,9 +112,14 @@ export default function RouteFeedCard({ route }) {
                         <div className='flex items-center gap-3 group'>
                             <div className='flex-shrink-0'>
                                 <img
-                                    src={owner.profilePicture || 'https://i.pravatar.cc/100?img=8'}
+                                    src={owner.profilePicture || buildAvatarFallback(owner.username)}
                                     alt={owner.username || 'Traveller'}
                                     className='h-12 w-12 rounded-full object-cover border border-slate-200 dark:border-slate-700 bg-gray-50'
+                                    loading='lazy'
+                                    onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.src = buildAvatarFallback(owner.username);
+                                    }}
                                 />
                             </div>
                             <div>
