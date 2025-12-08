@@ -10,7 +10,8 @@ import {
     reorderItineraryStops,
     moveStopBetweenDays,
     copyItineraryToUser,
-    shareItinerary
+    shareItinerary,
+    modifyAiItinerary // <-- İŞTE BURASI EKSİKTİ, BUNU EKLEDİM
 } from "../controllers/aiItinerary.controller.js";
 
 const router = express.Router();
@@ -29,5 +30,7 @@ router.post("/itineraries/:id/share", verifyToken, shareItinerary);
 
 router.post("/chatbot", verifyToken, askItineraryChatbot);
 
-export default router;
+// Artık import edildiği için bu satır hata vermeyecek:
+router.post('/itineraries/:id/modify', verifyToken, modifyAiItinerary);
 
+export default router;

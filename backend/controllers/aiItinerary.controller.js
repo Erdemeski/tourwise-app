@@ -6,7 +6,8 @@ import {
     generationSchema,
     updateAiItinerarySchema
 } from "../utils/aiValidators.js";
-import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget } from "../services/llm.service.js";
+// BURAYA DİKKAT: requestItineraryModification eklendi 👇
+import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget, requestItineraryModification } from "../services/llm.service.js";
 import { searchPlace, getPlacePhotoUrl } from "../services/places.service.js";
 import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
 
@@ -46,8 +47,6 @@ const enrichItineraryWithPlaces = async (plan) => {
         if (!day.stops || !Array.isArray(day.stops)) return day;
 
         const stopsPromises = day.stops.map(async (stop) => {
-            // Sadece externalId (bizim kaydettiğimiz placeId) varsa atla.
-            // LLM'in uydurduğu veya tahmin ettiği koordinatlara güvenmeyip API'den çekeceğiz.
             if (stop.externalId) {
                 return stop;
             }
@@ -68,9 +67,8 @@ const enrichItineraryWithPlaces = async (plan) => {
                         address: placeData.address,
                         geo: placeData.location,
                     },
-                    externalId: placeData.placeId, // Frontend Directions API için kritik
+                    externalId: placeData.placeId,
                     rating: placeData.rating,
-                    // photoUrl veya resources eklenebilir
                 };
             } else {
                 console.log(`❌ Not Found: ${stop.name}`);
@@ -239,7 +237,6 @@ export const askItineraryChatbot = async (req, res, next) => {
 
 // === YENİ EKLENEN ÖZELLİKLER ===
 
-// Bir gün içindeki durakların sırasını değiştirme
 export const reorderItineraryStops = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -257,14 +254,10 @@ export const reorderItineraryStops = async (req, res, next) => {
             return next(errorHandler(400, "Index out of bounds"));
         }
 
-        // Array'den çıkar ve yeni yere ekle
         const [movedItem] = day.stops.splice(oldIndex, 1);
         day.stops.splice(newIndex, 0, movedItem);
 
-        // Mongoose'a 'days' alanının değiştiğini bildir (Nested array olduğu için önemli)
         itinerary.markModified('days');
-        
-        // Opsiyonel: WaypointList'i de güncellemek gerekebilir
         itinerary.waypointList = mapDaysToWaypointList(itinerary.days);
 
         const saved = await itinerary.save();
@@ -274,7 +267,6 @@ export const reorderItineraryStops = async (req, res, next) => {
     }
 };
 
-// Durakları günler arasında taşıma
 export const moveStopBetweenDays = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -294,10 +286,8 @@ export const moveStopBetweenDays = async (req, res, next) => {
             return next(errorHandler(400, "Source index out of bounds"));
         }
 
-        // Kaynaktan al
         const [movedItem] = sourceDay.stops.splice(fromIndex, 1);
 
-        // Hedefe ekle
         const safeToIndex = (toIndex !== undefined && toIndex >= 0 && toIndex <= targetDay.stops.length)
             ? toIndex
             : targetDay.stops.length;
@@ -314,7 +304,6 @@ export const moveStopBetweenDays = async (req, res, next) => {
     }
 };
 
-// Itinerary kopyalama
 export const copyItineraryToUser = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -323,7 +312,6 @@ export const copyItineraryToUser = async (req, res, next) => {
         const source = await Itinerary.findById(id);
         if (!source) return next(errorHandler(404, "Itinerary not found"));
 
-        // Eğer 'shared' değilse ve sahibi biz değilsek kopyalayamayız
         if (source.visibility === 'private' && source.userId !== req.user.id && !req.user.isAdmin) {
             return next(errorHandler(403, "Cannot copy private itinerary"));
         }
@@ -337,7 +325,7 @@ export const copyItineraryToUser = async (req, res, next) => {
             durationDays: source.durationDays,
             budget: source.budget,
             tags: source.tags,
-            days: source.days, // Deep copy gerekebilir, Mongoose create anında halleder
+            days: source.days,
             waypointList: source.waypointList,
             visibility: 'private',
             status: 'draft',
@@ -352,7 +340,6 @@ export const copyItineraryToUser = async (req, res, next) => {
     }
 };
 
-// Paylaşma (Visibility Toggle + Community Logic)
 export const shareItinerary = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -361,9 +348,7 @@ export const shareItinerary = async (req, res, next) => {
         const itinerary = await Itinerary.findById(id);
         assertOwnership(itinerary, req.user);
 
-        // Basit toggle mantığı. İsterseniz body'den gelen veriye göre 'shared' yapabilirsiniz.
         itinerary.visibility = 'shared'; 
-        // Status'u published yapabiliriz
         itinerary.status = 'published';
 
         const saved = await itinerary.save();
@@ -373,3 +358,36 @@ export const shareItinerary = async (req, res, next) => {
     }
 };
 
+// DÜZELTİLDİ: modifyAiItinerary fonksiyonu temizlendi ve route kodu kaldırıldı
+export const modifyAiItinerary = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { prompt } = req.body;
+
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
+
+        const itinerary = await Itinerary.findById(id);
+        assertOwnership(itinerary, req.user);
+
+        console.log(`Modifying itinerary ${id} with prompt: ${prompt}`);
+
+        const modifiedPlanData = await requestItineraryModification(itinerary, prompt);
+        const enrichedPlan = await enrichItineraryWithPlaces(modifiedPlanData);
+
+        itinerary.days = enrichedPlan.days;
+        itinerary.waypointList = mapDaysToWaypointList(enrichedPlan.days);
+        
+        if (enrichedPlan.summary) itinerary.summary = enrichedPlan.summary;
+
+        itinerary.markModified('days');
+        itinerary.updatedAt = new Date();
+
+        const saved = await itinerary.save();
+        
+        console.log("Itinerary modified successfully");
+        res.json(saved);
+
+    } catch (error) {
+        next(error);
+    }
+};
