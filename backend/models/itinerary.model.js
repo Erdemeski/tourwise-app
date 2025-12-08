@@ -159,15 +159,9 @@ const itinerarySchema = new mongoose.Schema({
         type: budgetSchema,
         default: undefined,
     },
-    visibility: {
-        type: String,
-        enum: ['private', 'shared'],
-        default: 'private',
-        index: true,
-    },
     status: {
         type: String,
-        enum: ['draft', 'published', 'archived'],
+        enum: ['draft', 'finished', 'archived'],
         default: 'draft',
     },
     coverImage: {

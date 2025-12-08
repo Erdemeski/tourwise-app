@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { FiHeart, FiMessageCircle, FiBookmark, FiShare2, FiCalendar, FiPlus } from 'react-icons/fi'; // FiPlus ve FiCalendar eklendi
 import { motion, AnimatePresence } from 'motion/react';
 import RouteEventsModal from './RouteEventsModal'; // Modal import edildi
 
 const FALLBACK_COVER = 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80';
+const buildAvatarFallback = (name = '') =>
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Gezgin')}&background=0ea5e9&color=fff&size=96&font-size=0.38`;
 
 const formatRelativeTime = (value) => {
     if (!value) return 'az önce';
@@ -31,12 +34,18 @@ const formatRelativeTime = (value) => {
 export default function RouteFeedCard({ route }) {
     if (!route) return null;
 
+    const { currentUser } = useSelector((state) => state.user);
+    
     // --- YENİ EKLENEN STATE: MODAL KONTROLÜ ---
     // null = Kapalı, 'list' = Listeyi Gör, 'create' = Yeni Oluştur
     const [modalMode, setModalMode] = useState(null);
 
     const [isHoveringLike, setIsHoveringLike] = useState(false);
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [isFollowLoading, setIsFollowLoading] = useState(false);
+    
     const owner = route.owner || {};
+    const ownerId = owner._id;
     const likes = route.likesCount ?? route.likes?.length ?? 0;
     const comments = route.commentsCount ?? 0;
     const coverImage = route.coverImage || FALLBACK_COVER;
@@ -48,7 +57,52 @@ export default function RouteFeedCard({ route }) {
         ? `${route.startLocation} → ${route.endLocation}`
         : route.startLocation || route.endLocation || 'Konum bilgisi eklenmedi';
     const tags = Array.isArray(route.tags) ? route.tags.slice(0, 3) : [];
-    const canFollow = Boolean(owner.username);
+    const canFollow = Boolean(owner.username && ownerId && currentUser?._id && ownerId !== currentUser._id);
+
+    // Check if user is following this owner
+    useEffect(() => {
+        if (currentUser?._id && ownerId && ownerId !== currentUser._id) {
+            fetch(`/api/user/relations/${currentUser._id}`, { credentials: 'include' })
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data?.following) {
+                        const isFollowingUser = data.following.some((user) => {
+                            const userId = typeof user === 'string' ? user : user._id;
+                            return userId === ownerId;
+                        });
+                        setIsFollowing(isFollowingUser);
+                    }
+                })
+                .catch((err) => console.error('Failed to load following status:', err));
+        }
+    }, [currentUser?._id, ownerId]);
+
+    const handleFollowToggle = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (!currentUser?._id || !ownerId || ownerId === currentUser._id) return;
+
+        try {
+            setIsFollowLoading(true);
+            const endpoint = isFollowing ? 'unfollow' : 'follow';
+            const res = await fetch(`/api/user/${endpoint}/${ownerId}`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to update follow status');
+            }
+
+            setIsFollowing(!isFollowing);
+        } catch (err) {
+            console.error('Failed to toggle follow:', err);
+        } finally {
+            setIsFollowLoading(false);
+        }
+    };
 
     return (
         <>
@@ -58,28 +112,43 @@ export default function RouteFeedCard({ route }) {
                         <div className='flex items-center gap-3 group'>
                             <div className='flex-shrink-0'>
                                 <img
-                                    src={owner.profilePicture || 'https://i.pravatar.cc/100?img=8'}
+                                    src={owner.profilePicture || buildAvatarFallback(owner.username)}
                                     alt={owner.username || 'Traveller'}
                                     className='h-12 w-12 rounded-full object-cover border border-slate-200 dark:border-slate-700 bg-gray-50'
+                                    loading='lazy'
+                                    onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.src = buildAvatarFallback(owner.username);
+                                    }}
                                 />
                             </div>
                             <div>
-                                <div className='flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400'>
+                            <div className='flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 flex-wrap'>
                                     {owner.username && <span className='font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition'>{owner.fullName || owner.username}</span>}
                                     {owner.username && <span>·</span>}
                                     <span>@{owner.username || 'gezgin'}</span>
+                                    {owner.isAdmin && (
+                                        <span className='px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200'>
+                                            Admin
+                                        </span>
+                                    )}
                                 </div>
                                 <p className='text-xs text-slate-400'>{formatRelativeTime(route.createdAt)}</p>
                             </div>
                         </div>
                     </Link>
                     {canFollow && (
-                        <Link
-                            to={`/user/${owner.username}`}
-                            className='px-3 py-1.5 text-sm font-medium rounded-full border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition'
+                        <button
+                            onClick={handleFollowToggle}
+                            disabled={isFollowLoading}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-full border transition whitespace-nowrap ${
+                                isFollowing
+                                    ? 'bg-slate-200 dark:bg-gray-700 border-slate-300 dark:border-gray-600 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-gray-600'
+                                    : 'border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
                         >
-                            Takip Et
-                        </Link>
+                            {isFollowLoading ? '...' : isFollowing ? 'Takip ✓' : 'Takip Et'}
+                        </button>
                     )}
                 </header>
 
@@ -165,6 +234,7 @@ export default function RouteFeedCard({ route }) {
                             </button>
                         </div>
                         <div className='flex items-center gap-4 text-sm text-slate-500'>
+                            {}
                             <button type='button' className='flex items-center gap-2 hover:text-slate-700 dark:hover:text-white'>
                                 <FiBookmark />
                                 <span className="hidden sm:inline">Kaydet</span>

@@ -4,6 +4,12 @@ import { Alert, Badge, Button, Label, Modal, Select, Spinner, Table, TextInput, 
 import { Link, useLocation } from 'react-router-dom';
 import { HiOutlineExclamationCircle } from 'react-icons/hi';
 
+const statusBadgeColor = {
+    draft: 'gray',
+    finished: 'info',
+    shared: 'success',
+};
+
 export default function DashRoutes() {
     const { currentUser } = useSelector((state) => state.user);
     const location = useLocation();
@@ -27,11 +33,32 @@ export default function DashRoutes() {
     const [shareLoading, setShareLoading] = useState(false);
     const [shareError, setShareError] = useState(null);
     const [shareSuccess, setShareSuccess] = useState(null);
+    const [statusLoading, setStatusLoading] = useState(null);
+    const shareableItineraries = useMemo(
+        () => aiItineraries.filter((item) => item.status === 'finished' && !item.publishedRouteId),
+        [aiItineraries]
+    );
+
+    const safeParseJson = async (res) => {
+        const text = await res.text();
+        try {
+            return JSON.parse(text);
+        } catch {
+            return { message: text || 'Unexpected response from server' };
+        }
+    };
 
     const fetchRoutes = async (append = false) => {
         try {
             const startIndex = append ? routes.length : 0;
-            const query = `/api/routes?userId=${currentUser._id}&visibility=all&order=desc&startIndex=${startIndex}`;
+            let query;
+            if (currentUser.isAdmin) {
+                // Admin can see all routes
+                query = `/api/routes?order=desc&startIndex=${startIndex}&limit=20`;
+            } else {
+                // Regular users see only their routes
+                query = `/api/routes?userId=${currentUser._id}&visibility=all&order=desc&startIndex=${startIndex}`;
+            }
             const res = await fetch(query, { credentials: 'include' });
             const data = await res.json();
             if (!res.ok) {
@@ -113,6 +140,34 @@ export default function DashRoutes() {
         }
     };
 
+    const handleStatusToggle = async (routeId, status, currentVisibility) => {
+        const nextStatus = status === 'shared' ? 'finished' : 'shared';
+        const nextVisibility = nextStatus === 'finished' ? 'private' : currentVisibility;
+        try {
+            setStatusLoading(routeId);
+            const res = await fetch(`/api/routes/${routeId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ status: nextStatus, visibility: nextVisibility }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Unable to update status');
+            }
+            const updatedRoute = await res.json();
+            setRoutes((prev) =>
+                prev.map((route) =>
+                    route._id === routeId ? { ...route, status: updatedRoute.status, visibility: updatedRoute.visibility } : route
+                )
+            );
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setStatusLoading(null);
+        }
+    };
+
     const handleVisibilityToggle = async (routeId, visibility) => {
         const nextVisibility = visibility === 'public' ? 'private' : 'public';
         try {
@@ -174,14 +229,24 @@ export default function DashRoutes() {
                 credentials: 'include',
                 body: JSON.stringify(payload),
             });
-            const data = await res.json();
+            const data = await safeParseJson(res);
             if (!res.ok) {
                 throw new Error(data.message || 'Failed to publish itinerary');
             }
 
             setShareSuccess(`Route published! You can now customize it at /routes/${data.slug}`);
-            setShareForm((prev) => ({ ...prev, highlights: '', tips: '' }));
+            // Reset form to initial state
+            setShareForm({
+                itineraryId: '',
+                title: '',
+                summary: '',
+                visibility: 'public',
+                tags: '',
+                highlights: '',
+                tips: '',
+            });
             fetchRoutes();
+            fetchAiItineraries(); // Refresh itinerary list to update publishedRouteId status
         } catch (err) {
             setShareError(err.message);
         } finally {
@@ -189,7 +254,10 @@ export default function DashRoutes() {
         }
     };
 
-    const shareButtonDisabled = useMemo(() => !shareForm.itineraryId || shareLoading, [shareForm.itineraryId, shareLoading]);
+    const shareButtonDisabled = useMemo(
+        () => !shareForm.itineraryId || shareLoading || !shareableItineraries.find((i) => i._id === shareForm.itineraryId),
+        [shareForm.itineraryId, shareLoading, shareableItineraries]
+    );
 
     if (loading) {
         return (
@@ -205,7 +273,7 @@ export default function DashRoutes() {
             <div className='flex justify-between items-center mb-4'>
                 <h2 className='text-2xl font-semibold text-gray-800 dark:text-gray-100'>My Routes</h2>
                 <Link to='/routes/create'>
-                    <Button gradientDuoTone='greenToBlue'>Create new route</Button>
+                    <Button disabled={true} gradientDuoTone='greenToBlue'>Create new route</Button>
                 </Link>
             </div>
 
@@ -220,20 +288,20 @@ export default function DashRoutes() {
                                 Pick an AI draft and add extra context before publishing it as a route.
                             </p>
                         </div>
-                        <Link to='/dashboard?tab=my-itineraries'>
+                        <Link to='/my-itineraries'>
                             <Button color='light' size='xs'>Manage drafts</Button>
                         </Link>
                     </div>
                     <div>
-                        <Label>Itinerary draft</Label>
+                        <Label>Itinerary draft (not yet published)</Label>
                         <Select
                             value={shareForm.itineraryId}
                             onChange={(e) => setShareForm((prev) => ({ ...prev, itineraryId: e.target.value }))}
                         >
                             <option value=''>Select itinerary</option>
-                            {aiItineraries.map((item) => (
+                            {shareableItineraries.map((item) => (
                                 <option key={item._id} value={item._id}>
-                                    {item.title}
+                                    {item.title} {item.status ? `(${item.status})` : ''}
                                 </option>
                             ))}
                         </Select>
@@ -246,7 +314,6 @@ export default function DashRoutes() {
                         >
                             <option value='public'>Public</option>
                             <option value='private'>Private</option>
-                            <option value='unlisted'>Unlisted</option>
                         </Select>
                     </div>
                     <div>
@@ -293,6 +360,11 @@ export default function DashRoutes() {
                             <Alert color='failure'>{shareError}</Alert>
                         </div>
                     )}
+                    {shareForm.itineraryId && !shareableItineraries.find((item) => item._id === shareForm.itineraryId) && (
+                        <div className='lg:col-span-2'>
+                            <Alert color='warning'>Select a finished itinerary that is not yet published.</Alert>
+                        </div>
+                    )}
                     {shareSuccess && (
                         <div className='lg:col-span-2'>
                             <Alert color='success'>{shareSuccess}</Alert>
@@ -312,7 +384,9 @@ export default function DashRoutes() {
                         <Table.Head>
                             <Table.HeadCell>Updated</Table.HeadCell>
                             <Table.HeadCell>Title</Table.HeadCell>
+                            <Table.HeadCell>Itinerary</Table.HeadCell>
                             <Table.HeadCell>Visibility</Table.HeadCell>
+                            <Table.HeadCell>Status</Table.HeadCell>
                             <Table.HeadCell>Likes</Table.HeadCell>
                             <Table.HeadCell>Forks</Table.HeadCell>
                             <Table.HeadCell className='text-center'>Actions</Table.HeadCell>
@@ -322,26 +396,61 @@ export default function DashRoutes() {
                                 <Table.Row className='bg-white dark:border-gray-700 dark:bg-gray-800'>
                                     <Table.Cell>{new Date(route.updatedAt).toLocaleString()}</Table.Cell>
                                     <Table.Cell>
-                                        <Link className='font-medium text-gray-900 dark:text-white hover:underline' to={`/routes/${route.slug}`}>
-                                            {route.title}
-                                        </Link>
+                                        <div className='flex items-center gap-2'>
+                                            <Link className='font-medium text-gray-900 dark:text-white hover:underline' to={`/routes/${route.slug}`}>
+                                                {route.title}
+                                            </Link>
+                                            {route.isForked && (
+                                                <Badge color='purple' size='xs'>
+                                                    forked
+                                                </Badge>
+                                            )}
+                                        </div>
                                     </Table.Cell>
                                     <Table.Cell>
-                                        <Badge color={route.visibility === 'public' ? 'success' : 'gray'}>
-                                            {route.visibility}
+                                        {route.itineraryStatus ? (
+                                            <Badge color={route.itineraryStatus === 'finished' ? 'info' : 'gray'}>
+                                                {route.itineraryStatus}
+                                            </Badge>
+                                        ) : (
+                                            <span className='text-gray-400 text-sm'>—</span>
+                                        )}
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        {route.status === 'shared' ? (
+                                            <Badge color={route.visibility === 'public' ? 'success' : 'gray'}>
+                                                {route.visibility}
+                                            </Badge>
+                                        ) : (
+                                            <span className='text-gray-400 text-sm'>—</span>
+                                        )}
+                                    </Table.Cell>
+                                    <Table.Cell>
+                                        <Badge color={route.status === 'shared' ? 'success' : 'gray'}>
+                                            {route.status === 'shared' ? 'shared' : 'unshared'}
                                         </Badge>
                                     </Table.Cell>
                                     <Table.Cell>{route.likes?.length || 0}</Table.Cell>
                                     <Table.Cell>{route.forksCount || 0}</Table.Cell>
                                     <Table.Cell>
                                         <div className='flex flex-wrap gap-2 justify-end'>
+                                            {route.status === 'shared' && (
+                                                <Button
+                                                    size='xs'
+                                                    color='light'
+                                                    onClick={() => handleVisibilityToggle(route._id, route.visibility)}
+                                                    isProcessing={pendingVisibility === route._id}
+                                                >
+                                                    Make {route.visibility === 'public' ? 'private' : 'public'}
+                                                </Button>
+                                            )}
                                             <Button
                                                 size='xs'
                                                 color='light'
-                                                onClick={() => handleVisibilityToggle(route._id, route.visibility)}
-                                                isProcessing={pendingVisibility === route._id}
+                                                onClick={() => handleStatusToggle(route._id, route.status || 'draft', route.visibility)}
+                                                isProcessing={statusLoading === route._id}
                                             >
-                                                Make {route.visibility === 'public' ? 'private' : 'public'}
+                                                Make {route.status === 'shared' ? 'unshared' : 'shared'}
                                             </Button>
                                             <Link to={`/routes/${route._id}/edit`}>
                                                 <Button size='xs' color='info'>

@@ -27,6 +27,26 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: "https://static.vecteezy.com/system/resources/previews/005/544/718/non_2x/profile-icon-design-free-vector.jpg"
     },
+    bannerImage: {
+        type: String,
+        default: null,
+    },
+    bio: {
+        type: String,
+        default: '',
+    },
+    location: {
+        type: String,
+        default: '',
+    },
+    followers: {
+        type: [String],
+        default: [],
+    },
+    following: {
+        type: [String],
+        default: [],
+    },
     isAdmin: {
         type: Boolean,
         default: false,

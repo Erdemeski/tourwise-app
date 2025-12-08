@@ -24,6 +24,21 @@ export default function DashboardPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!currentUser?.isAdmin) {
+      navigate(`/user/${currentUser?.username || ''}`);
+      return;
+    }
+    // Check if we're on a direct URL route
+    if (location.pathname === '/my-itineraries') {
+      setTab('my-itineraries');
+      return;
+    }
+    if (location.pathname === '/my-routes') {
+      setTab('my-routes');
+      return;
+    }
+
+    // Otherwise check query params
     const urlParams = new URLSearchParams(location.search)
     const tabFromUrl = urlParams.get('tab')
     if (tabFromUrl) {
@@ -34,7 +49,7 @@ export default function DashboardPage() {
       navigate(`/dashboard?tab=my-routes`);
       setTab('my-routes');
     }
-  }, [location.search, currentUser.isAdmin, navigate]);
+  }, [location.pathname, location.search, currentUser.isAdmin, navigate]);
 
   const renderTabContent = () => {
     if (!currentUser.isAdmin && (tab === 'my-routes' || !tab)) return <DashRoutes />;
@@ -42,7 +57,7 @@ export default function DashboardPage() {
     if (tab === 'profile') {
       return <div className='flex-1'>
         <div className='p-4 sm:p-8 w-full'>
-          <ProfileShowcase onEditProfile={() => setShowProfileEditor(true)} />
+          <ProfileShowcase /* onEditProfile={() => setShowProfileEditor(true)} */ />
         </div>
       </div>
     };

@@ -143,7 +143,7 @@ export default function CommentSection({ routeId }) {
                 <div className='flex items-center gap-1 text-gray-500 dark:text-gray-50 text-sm'>
                     <p>Signed in as:</p>
                     <img className='h-6 w-6 object-cover rounded-full' src={currentUser.profilePicture} alt={currentUser.username} />
-                    <Link to={'/dashboard?tab=profile'} className='text-xs text-zinc-400 dark:text-zinc-300 hover:underline'>
+                    <Link to={`/user/${currentUser.username}`} className='text-xs text-zinc-400 dark:text-zinc-300 hover:underline'>
                         @{currentUser.username}
                     </Link>
                 </div>

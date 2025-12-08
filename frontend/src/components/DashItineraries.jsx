@@ -41,7 +41,7 @@ const sanitizeCommaSeparated = (value = '') =>
 
 const statusColor = {
     draft: 'gray',
-    published: 'info',
+    finished: 'info',
     archived: 'failure',
 };
 
@@ -72,6 +72,8 @@ export default function DashItineraries() {
     const [editDraft, setEditDraft] = useState(null);
     const [saveLoading, setSaveLoading] = useState(false);
     const [saveError, setSaveError] = useState(null);
+    const [finishLoading, setFinishLoading] = useState(false);
+    const [finishError, setFinishError] = useState(null);
 
     const [deleteState, setDeleteState] = useState({ open: false, id: null });
     const [chatState, setChatState] = useState({
@@ -123,7 +125,6 @@ export default function DashItineraries() {
                 title: data.title || '',
                 summary: data.summary || '',
                 tags: data.tags?.join(', ') || '',
-                visibility: data.visibility || 'private',
             });
         } catch (error) {
             setDetailError(error.message);
@@ -199,7 +200,6 @@ export default function DashItineraries() {
                 title: editDraft.title.trim(),
                 summary: editDraft.summary.trim(),
                 tags: sanitizeCommaSeparated(editDraft.tags),
-                visibility: editDraft.visibility,
             };
 
             const res = await fetch(`/api/ai/itineraries/${selected._id}`, {
@@ -220,6 +220,55 @@ export default function DashItineraries() {
             setSaveError(error.message);
         } finally {
             setSaveLoading(false);
+        }
+    };
+
+    const handleMarkFinished = async () => {
+        if (!selected?._id) return;
+        try {
+            setFinishLoading(true);
+            setFinishError(null);
+            const res = await fetch(`/api/ai/itineraries/${selected._id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ status: 'finished' }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.message || 'Failed to mark as finished');
+            }
+            // After marking finished, ensure a route entry exists (unshared/private/finished)
+            try {
+                const shareRes = await fetch('/api/routes/from-itinerary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        itineraryId: selected._id,
+                        sharePublicly: false,
+                        visibility: 'private',
+                        title: data.title,
+                        summary: data.summary,
+                        tags: data.tags,
+                        coverImage: data.coverImage,
+                    }),
+                });
+                if (!shareRes.ok) {
+                    const maybe = await shareRes.json().catch(() => ({}));
+                    console.error('Failed to sync route from itinerary', maybe);
+                }
+            } catch (err) {
+                console.error('Sync route error', err);
+            }
+            setSelected(data);
+            setItineraries((prev) =>
+                prev.map((item) => (item._id === data._id ? { ...item, ...data } : item))
+            );
+        } catch (error) {
+            setFinishError(error.message);
+        } finally {
+            setFinishLoading(false);
         }
     };
 
@@ -465,9 +514,6 @@ export default function DashItineraries() {
                             <div className='flex flex-wrap gap-3 items-start justify-between'>
                                 <div>
                                     <div className='flex gap-2 items-center'>
-                                        <Badge color={selected.visibility === 'shared' ? 'success' : 'gray'}>
-                                            {selected.visibility}
-                                        </Badge>
                                         <Badge color={statusColor[selected.status] || 'gray'}>
                                             {selected.status}
                                         </Badge>
@@ -480,11 +526,25 @@ export default function DashItineraries() {
                                     </p>
                                 </div>
                                 <div className='flex flex-wrap gap-2'>
-                                    <Link to={`/dashboard?tab=my-routes&itinerary=${selected._id}`}>
-                                        <Button color='success' size='sm'>
-                                            Share via My Routes
+                                    {/*                                     <Link to={`/dashboard?tab=my-routes&itinerary=${selected._id}`}>
+ */}
+                                    {selected.status === 'finished' && (
+                                        <Link to={`/my-routes`}>
+                                            <Button color='success' size='sm'>
+                                                Share via My Routes
+                                            </Button>
+                                        </Link>
+                                    )}
+                                    {selected.status !== 'finished' && (
+                                        <Button
+                                            color='gray'
+                                            size='sm'
+                                            onClick={handleMarkFinished}
+                                            isProcessing={finishLoading}
+                                        >
+                                            Mark as finished
                                         </Button>
-                                    </Link>
+                                    )}
                                     <Button
                                         color='failure'
                                         size='sm'
@@ -503,6 +563,7 @@ export default function DashItineraries() {
                                     </Button>
                                 </div>
                             </div>
+                            {finishError && <Alert color='failure' className='mt-3'>{finishError}</Alert>}
                             {selected.publishedRouteId && (
                                 <Alert color='success' className='mt-4'>
                                     This itinerary is already published as a route. Manage additional details inside the{' '}
@@ -549,18 +610,6 @@ export default function DashItineraries() {
                                         value={editDraft?.title || ''}
                                         onChange={(e) => setEditDraft((prev) => ({ ...prev, title: e.target.value }))}
                                     />
-                                </div>
-                                <div>
-                                    <Label>Visibility</Label>
-                                    <Select
-                                        value={editDraft?.visibility || 'private'}
-                                        onChange={(e) =>
-                                            setEditDraft((prev) => ({ ...prev, visibility: e.target.value }))
-                                        }
-                                    >
-                                        <option value='private'>Private</option>
-                                        <option value='shared'>Shared</option>
-                                    </Select>
                                 </div>
                                 <div className='md:col-span-2'>
                                     <Label>Summary</Label>

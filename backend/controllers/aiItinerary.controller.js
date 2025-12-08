@@ -6,7 +6,8 @@ import {
     generationSchema,
     updateAiItinerarySchema
 } from "../utils/aiValidators.js";
-// BURAYA DİKKAT: requestItineraryModification eklendi 👇
+
+// SENİN EKLEDİĞİN IMPORTLAR (KORUNDU)
 import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget, requestItineraryModification } from "../services/llm.service.js";
 import { searchPlace, getPlacePhotoUrl } from "../services/places.service.js";
 import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
@@ -106,7 +107,6 @@ export const generateAiItinerary = async (req, res, next) => {
         const normalizedPlan = aiItinerarySchema.parse({
             ...enrichedPlan,
             budget: budgetAnalysis,
-            visibility: "private",
         });
 
         const days = Array.isArray(normalizedPlan.days) ? normalizedPlan.days : [];
@@ -144,12 +144,19 @@ export const listAiItineraries = async (req, res, next) => {
         }
 
         const view = req.query.view;
+        const isAdmin = req.user?.isAdmin === true;
         const projection =
             view === "compact"
-                ? "title summary tags updatedAt createdAt status visibility durationDays prompt budget publishedRouteId"
+                ? "title summary tags updatedAt createdAt status durationDays prompt budget publishedRouteId source userId"
                 : undefined;
 
-        const itineraries = await Itinerary.find({ userId: req.user.id, source: "ai" })
+        // Admin can see all AI itineraries, regular users only see their own
+        const query = { source: "ai" };
+        if (!isAdmin) {
+            query.userId = req.user.id;
+        }
+
+        const itineraries = await Itinerary.find(query)
             .sort({ updatedAt: -1 })
             .select(projection);
 
@@ -340,6 +347,8 @@ export const copyItineraryToUser = async (req, res, next) => {
     }
 };
 
+
+// Paylaşma (Status Toggle) - Deprecated: Itineraries don't have shared status anymore
 export const shareItinerary = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -348,8 +357,8 @@ export const shareItinerary = async (req, res, next) => {
         const itinerary = await Itinerary.findById(id);
         assertOwnership(itinerary, req.user);
 
-        itinerary.visibility = 'shared'; 
-        itinerary.status = 'published';
+        // Mark as finished (ready to be published as route)
+        itinerary.status = 'finished';
 
         const saved = await itinerary.save();
         res.json(saved);
@@ -358,7 +367,7 @@ export const shareItinerary = async (req, res, next) => {
     }
 };
 
-// DÜZELTİLDİ: modifyAiItinerary fonksiyonu temizlendi ve route kodu kaldırıldı
+// SENİN EKLEDİĞİN FONKSİYON (Korundu)
 export const modifyAiItinerary = async (req, res, next) => {
     try {
         const { id } = req.params;

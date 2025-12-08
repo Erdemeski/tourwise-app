@@ -60,12 +60,11 @@ export const aiItinerarySchema = z.object({
   budget: budgetSchema.optional(),
   tags: z.array(z.string()).default([]),
   days: z.array(daySchema).min(1),
-  visibility: z.enum(['private', 'shared']).default('private'),
   prompt: z.string().optional(),
 });
 
 export const updateAiItinerarySchema = aiItinerarySchema.partial().extend({
-  status: z.enum(['draft', 'published', 'archived']).optional(),
+  status: z.enum(['draft', 'finished', 'archived']).optional(),
 });
 
 export const chatbotSchema = z.object({
@@ -79,6 +78,9 @@ export const chatbotSchema = z.object({
     })
     .optional(),
 });
+
+
+
 
 
 

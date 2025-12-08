@@ -49,8 +49,14 @@ const routeSchema = new mongoose.Schema({
     },
     visibility: {
         type: String,
-        enum: ['public', 'private', 'unlisted'],
+        enum: ['public', 'private'],
         default: 'private',
+        index: true,
+    },
+    status: {
+        type: String,
+        enum: ['draft', 'finished', 'shared'],
+        default: 'draft',
         index: true,
     },
     title: {

@@ -48,13 +48,24 @@ export const updateUser = async (req, res, next) => {
         }
     }
 
+    // Validate bio length
+    if (req.body.bio && req.body.bio.length > 500) {
+        return next(errorHandler(400, 'Bio must be less than 500 characters'));
+    }
+
     try {
+        const updateData = {
+            firstName: req.body.firstName,
+            lastName: req.body.lastName,
+            ...(req.body.bio !== undefined && { bio: req.body.bio }),
+            ...(req.body.location !== undefined && { location: req.body.location }),
+            ...(req.body.profilePicture !== undefined && { profilePicture: req.body.profilePicture }),
+            ...(req.body.bannerImage !== undefined && { bannerImage: req.body.bannerImage }),
+            ...(req.body.password && !currentUser.isGoogleUser && { password: req.body.password }),
+        };
+
         const updatedUser = await User.findByIdAndUpdate(req.params.userId, {
-            $set: {
-                firstName: req.body.firstName,
-                lastName: req.body.lastName,
-                ...(req.body.password && !currentUser.isGoogleUser && { password: req.body.password }),
-            },
+            $set: updateData,
         }, { new: true });
         const { password, ...rest } = updatedUser._doc;
         res.status(200).json(rest);
@@ -164,6 +175,105 @@ export const getUsersPP = async (req, res, next) => {
     try {
         const users = await User.find().select('_id profilePicture username firstName lastName');
         res.status(200).json({ users });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getUserRelations = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findById(userId).lean();
+        if (!user) {
+            return next(errorHandler(404, 'User not found'));
+        }
+
+        const followers = await User.find({ _id: { $in: user.followers || [] } })
+            .select('_id username firstName lastName profilePicture isAdmin')
+            .lean();
+        const following = await User.find({ _id: { $in: user.following || [] } })
+            .select('_id username firstName lastName profilePicture isAdmin')
+            .lean();
+
+        res.status(200).json({
+            followers,
+            following,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const followUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const currentUserId = req.user.id;
+
+        if (userId === currentUserId) {
+            return next(errorHandler(400, 'You cannot follow yourself'));
+        }
+
+        const userToFollow = await User.findById(userId);
+        const currentUser = await User.findById(currentUserId);
+
+        if (!userToFollow || !currentUser) {
+            return next(errorHandler(404, 'User not found'));
+        }
+
+        // Check if already following
+        if (currentUser.following.includes(userId)) {
+            return next(errorHandler(400, 'You are already following this user'));
+        }
+
+        // Add to following list
+        currentUser.following.push(userId);
+        await currentUser.save();
+
+        // Add to followers list
+        if (!userToFollow.followers.includes(currentUserId)) {
+            userToFollow.followers.push(currentUserId);
+            await userToFollow.save();
+        }
+
+        res.status(200).json({
+            message: 'User followed successfully',
+            followers: userToFollow.followers,
+            following: currentUser.following,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const unfollowUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const currentUserId = req.user.id;
+
+        if (userId === currentUserId) {
+            return next(errorHandler(400, 'You cannot unfollow yourself'));
+        }
+
+        const userToUnfollow = await User.findById(userId);
+        const currentUser = await User.findById(currentUserId);
+
+        if (!userToUnfollow || !currentUser) {
+            return next(errorHandler(404, 'User not found'));
+        }
+
+        // Remove from following list
+        currentUser.following = currentUser.following.filter(id => id.toString() !== userId);
+        await currentUser.save();
+
+        // Remove from followers list
+        userToUnfollow.followers = userToUnfollow.followers.filter(id => id.toString() !== currentUserId);
+        await userToUnfollow.save();
+
+        res.status(200).json({
+            message: 'User unfollowed successfully',
+            followers: userToUnfollow.followers,
+            following: currentUser.following,
+        });
     } catch (error) {
         next(error);
     }

@@ -148,7 +148,7 @@ export default function HomePage() {
                     <RainbowButton className='h-12'>Explore public routes</RainbowButton>
                   </Link>
                   <div className="z-10 flex items-center justify-center">
-                    <Link to={currentUser ? "/dashboard?tab=profile" : "/sign-in"}>
+                    <Link to={currentUser ? `/user/${currentUser.username}` : "/sign-in"}>
                       <div
                         className={cn(
                           "group rounded-full border border-black/5 bg-neutral-100 text-base text-white transition-all ease-in hover:cursor-pointer hover:bg-neutral-200 dark:border-white/5 dark:bg-neutral-900 dark:hover:bg-neutral-800"

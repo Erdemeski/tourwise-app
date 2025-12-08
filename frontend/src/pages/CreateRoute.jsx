@@ -244,7 +244,6 @@ export default function CreateRoute() {
                                 >
                                     <option value="private">Private</option>
                                     <option value="public">Public</option>
-                                    <option value="unlisted">Unlisted</option>
                                 </Select>
                             </div>
                             <div className='md:col-span-2'>

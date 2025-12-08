@@ -70,13 +70,13 @@ const buildItineraryQuery = (req) => {
     const viewerId = req.user?.id;
     const isAdmin = req.user?.isAdmin === true;
 
+    // Admin can see all, regular users only see finished (published routes)
+    if (!isAdmin) {
+        query.status = 'finished';
+    }
+
     if (req.query.userId) {
         query.userId = req.query.userId;
-        if (req.query.userId !== viewerId && !isAdmin) {
-            query.visibility = 'shared';
-        }
-    } else if (!isAdmin) {
-        query.visibility = 'shared';
     }
 
     if (req.query.routeId) {
@@ -122,6 +122,7 @@ export const getItineraries = async (req, res, next) => {
         const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
         const lastMonthItineraries = await Itinerary.countDocuments({
             ...query,
+            status: 'finished',
             createdAt: { $gte: oneMonthAgo },
         });
 
@@ -247,7 +248,8 @@ export const toggleItineraryVisibility = async (req, res, next) => {
             return next(errorHandler(403, "You are not allowed to update this itinerary"));
         }
 
-        itinerary.visibility = itinerary.visibility === "private" ? "shared" : "private";
+        // Toggle between draft and finished
+        itinerary.status = itinerary.status === "finished" ? "draft" : "finished";
 
         await itinerary.save();
         res.status(200).json(itinerary);

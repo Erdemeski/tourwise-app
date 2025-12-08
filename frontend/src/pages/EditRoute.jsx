@@ -80,6 +80,7 @@ export default function EditRoute() {
     const [formData, setFormData] = useState({
         title: '',
         summary: '',
+        status: 'draft',
         visibility: 'private',
         tags: '',
         coverImage: '',
@@ -111,7 +112,8 @@ export default function EditRoute() {
                 setFormData({
                     title: route.title,
                     summary: route.summary,
-                    visibility: route.visibility,
+                    status: route.status || 'draft',
+                    visibility: route.visibility || 'private',
                     tags: (route.tags || []).join(', '),
                     coverImage: route.coverImage || '',
                     gallery: route.gallery || [],
@@ -220,6 +222,7 @@ export default function EditRoute() {
             const payload = {
                 title: formData.title,
                 summary: formData.summary,
+                status: formData.status,
                 visibility: formData.visibility,
                 tags: formData.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
                 coverImage: formData.coverImage,
@@ -272,7 +275,7 @@ export default function EditRoute() {
                 <h2 className="mt-7 mb-10 text-center text-4xl font-bold tracking-tight text-balance text-gray-900 dark:text-gray-50 sm:text-5xl">Edit route</h2>
                 <form className='flex flex-col gap-6' onSubmit={handleSubmit}>
                     <Card className='p-4 shadow-lg'>
-                        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
                             <div>
                                 <Label className='block text-sm font-medium leading-6'>Title</Label>
                                 <TextInput
@@ -285,18 +288,39 @@ export default function EditRoute() {
                                 />
                             </div>
                             <div>
+                                <Label className='block text-sm font-medium leading-6'>Status</Label>
+                                <Select
+                                    sizing='sm'
+                                    value={formData.status}
+                                    onChange={(e) => {
+                                        const newStatus = e.target.value;
+                                        const newVisibility = newStatus === 'finished' ? 'private' : formData.visibility;
+                                        setFormData({ ...formData, status: newStatus, visibility: newVisibility });
+                                    }}
+                                >
+                                    <option value="draft">Draft</option>
+                                    <option value="finished">Finished</option>
+                                    <option value="shared">Shared</option>
+                                </Select>
+                            </div>
+                            <div>
                                 <Label className='block text-sm font-medium leading-6'>Visibility</Label>
                                 <Select
                                     sizing='sm'
                                     value={formData.visibility}
                                     onChange={(e) => setFormData({ ...formData, visibility: e.target.value })}
+                                    disabled={formData.status !== 'shared'}
                                 >
                                     <option value="private">Private</option>
                                     <option value="public">Public</option>
-                                    <option value="unlisted">Unlisted</option>
                                 </Select>
+                                {formData.status !== 'shared' && (
+                                    <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                                        Visibility can only be changed for shared routes
+                                    </p>
+                                )}
                             </div>
-                            <div className='md:col-span-2'>
+                            <div className='md:col-span-3'>
                                 <Label className='block text-sm font-medium leading-6'>Summary</Label>
                                 <TextInput
                                     type='text'
@@ -450,39 +474,47 @@ export default function EditRoute() {
                         <div className='grid gap-6'>
                             <div>
                                 <Label className='block text-sm font-medium leading-6 mb-2'>Overview</Label>
-                                <ReactQuill
-                                    theme='snow'
-                                    modules={quillModules}
-                                    value={formData.overview}
-                                    onChange={(value) => setFormData({ ...formData, overview: value })}
-                                />
+                                <div className='react-quill-wrapper'>
+                                    <ReactQuill
+                                        theme='snow'
+                                        modules={quillModules}
+                                        value={formData.overview}
+                                        onChange={(value) => setFormData({ ...formData, overview: value })}
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <Label className='block text-sm font-medium leading-6 mb-2'>Itinerary</Label>
-                                <ReactQuill
-                                    theme='snow'
-                                    modules={quillModules}
-                                    value={formData.itinerary}
-                                    onChange={(value) => setFormData({ ...formData, itinerary: value })}
-                                />
+                                <div className='react-quill-wrapper'>
+                                    <ReactQuill
+                                        theme='snow'
+                                        modules={quillModules}
+                                        value={formData.itinerary}
+                                        onChange={(value) => setFormData({ ...formData, itinerary: value })}
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <Label className='block text-sm font-medium leading-6 mb-2'>Highlights</Label>
-                                <ReactQuill
-                                    theme='snow'
-                                    modules={quillModules}
-                                    value={formData.highlights}
-                                    onChange={(value) => setFormData({ ...formData, highlights: value })}
-                                />
+                                <div className='react-quill-wrapper'>
+                                    <ReactQuill
+                                        theme='snow'
+                                        modules={quillModules}
+                                        value={formData.highlights}
+                                        onChange={(value) => setFormData({ ...formData, highlights: value })}
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <Label className='block text-sm font-medium leading-6 mb-2'>Tips</Label>
-                                <ReactQuill
-                                    theme='snow'
-                                    modules={quillModules}
-                                    value={formData.tips}
-                                    onChange={(value) => setFormData({ ...formData, tips: value })}
-                                />
+                                <div className='react-quill-wrapper'>
+                                    <ReactQuill
+                                        theme='snow'
+                                        modules={quillModules}
+                                        value={formData.tips}
+                                        onChange={(value) => setFormData({ ...formData, tips: value })}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </Card>
