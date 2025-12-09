@@ -347,7 +347,6 @@ export const copyItineraryToUser = async (req, res, next) => {
     }
 };
 
-
 // Paylaşma (Status Toggle) - Deprecated: Itineraries don't have shared status anymore
 export const shareItinerary = async (req, res, next) => {
     try {
