@@ -54,7 +54,9 @@ export default function DashItineraries() {
     const [selected, setSelected] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState(null);
-
+    const [modifyOpen, setModifyOpen] = useState(false);
+    const [modifyPrompt, setModifyPrompt] = useState('');
+    const [modifyLoading, setModifyLoading] = useState(false);
     const [generatorOpen, setGeneratorOpen] = useState(false);
     const [generatorForm, setGeneratorForm] = useState({
         prompt: '',
@@ -293,6 +295,34 @@ export default function DashItineraries() {
         }
     };
 
+    const handleModifyItinerary = async () => {
+        if (!modifyPrompt.trim() || !selected?._id) return;
+
+        try {
+            setModifyLoading(true);
+            const res = await fetch(`/api/ai/itineraries/${selected._id}/modify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ prompt: modifyPrompt }),
+            });
+            
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Modification failed');
+
+            // Listeyi ve seçili planı güncelle
+            setSelected(data);
+            setItineraries(prev => prev.map(item => item._id === data._id ? { ...item, ...data } : item));
+            
+            setModifyOpen(false);
+            setModifyPrompt('');
+        } catch (error) {
+            setDetailError(error.message); // Hata mesajını detay kısmında gösterelim
+        } finally {
+            setModifyLoading(false);
+        }
+    };
+
     const openChatForStop = (stop) => {
         setChatState({
             open: true,
@@ -522,6 +552,14 @@ export default function DashItineraries() {
                                     >
                                         <HiOutlineTrash className='mr-2 h-4 w-4' />
                                         Delete
+                                    </Button>
+                                    <Button 
+                                        gradientDuoTone="pinkToOrange" 
+                                        size="sm" 
+                                        onClick={() => setModifyOpen(true)}
+                                    >
+                                        <HiOutlineSparkles className="mr-2 h-4 w-4" />
+                                        Refine with AI
                                     </Button>
                                 </div>
                             </div>
@@ -792,7 +830,34 @@ export default function DashItineraries() {
                     </div>
                 </Modal.Body>
             </Modal>
-
+            
+            <Modal show={modifyOpen} onClose={() => setModifyOpen(false)}>
+                <Modal.Header>Refine Itinerary with AI</Modal.Header>
+                <Modal.Body>
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-500">
+                            Tell the AI what you want to change (e.g., "Change Day 2 to focus on museums", "Replace the dinner on Day 1 with a cheaper option").
+                        </p>
+                        <Textarea
+                            rows={4}
+                            placeholder="Make Day 2 more adventurous..."
+                            value={modifyPrompt}
+                            onChange={(e) => setModifyPrompt(e.target.value)}
+                        />
+                        <div className="flex justify-end gap-3 mt-4">
+                            <Button color="gray" onClick={() => setModifyOpen(false)}>Cancel</Button>
+                            <Button 
+                                gradientDuoTone="pinkToOrange" 
+                                onClick={handleModifyItinerary} 
+                                isProcessing={modifyLoading}
+                            >
+                                <HiOutlineSparkles className="mr-2 h-4 w-4" />
+                                Refine Plan
+                            </Button>
+                        </div>
+                    </div>
+                </Modal.Body>
+            </Modal>
             <Modal show={chatState.open} onClose={() => setChatState((prev) => ({ ...prev, open: false }))}>
                 <Modal.Header>Ask TourWise AI</Modal.Header>
                 <Modal.Body>

@@ -8,6 +8,26 @@ const llmConfig = {
   model: process.env.LLM_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
 };
 
+// --- YARDIMCI FONKSİYONLAR ---
+
+const openAiClient = (() => {
+  if (!llmConfig.apiKey) {
+    console.warn('[LLM] No API key detected (set LLM_API_KEY or OPENAI_API_KEY). Falling back to offline scaffold.');
+    return null;
+  }
+
+  try {
+    return new OpenAI({
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseUrl || undefined,
+    });
+  } catch (error) {
+    console.error('Failed to initialize OpenAI client', error);
+    return null;
+  }
+})();
+
+// B planı: API Key yoksa veya hata alınırsa dönecek taslak
 const buildFallbackPlan = (prompt, preferences) => {
   const duration = preferences.durationDays ?? 3;
   const stopFor = (day) => [
@@ -42,54 +62,32 @@ const buildFallbackPlan = (prompt, preferences) => {
   };
 };
 
-const openAiClient = (() => {
-  if (!llmConfig.apiKey) {
-    console.warn('[LLM] No API key detected (set LLM_API_KEY or OPENAI_API_KEY). Falling back to offline scaffold.');
-    return null;
-  }
-
-  try {
-    return new OpenAI({
-      apiKey: llmConfig.apiKey,
-      baseURL: llmConfig.baseUrl || undefined,
-    });
-  } catch (error) {
-    console.error('Failed to initialize OpenAI client', error);
-    return null;
-  }
-})();
-
-const pullResponseText = (response) => {
-  const carrier = response;
-  const outputChunks =
-    carrier?.output
-      ?.flatMap((item) => item.content ?? [])
-      ?.map((chunk) => chunk?.text?.trim())
-      ?.filter((chunk) => Boolean(chunk)) ?? [];
-
-  if (outputChunks.length) {
-    return outputChunks.join('\n').trim();
-  }
-
-  const fallback = carrier?.output_text?.join('\n').trim();
-  if (fallback) {
-    return fallback;
-  }
-
-  throw new Error('OpenAI response did not include textual content');
-};
-
 const parseResponseJson = (response) => {
-  const payload = pullResponseText(response);
-  const sanitized = payload
-    .replace(/```json/gi, '```')
+  // OpenAI chat completion standard structure
+  const content = response.choices?.[0]?.message?.content;
+  
+  if (!content) {
+     // Fallback for non-standard responses just in case
+     const fallback = response?.output_text?.join('\n').trim();
+     if (fallback) return JSON.parse(fallback);
+     throw new Error('OpenAI response did not include textual content');
+  }
+
+  const sanitized = content
+    .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();
+  
   const firstBrace = sanitized.indexOf('{');
   const lastBrace = sanitized.lastIndexOf('}');
-  const jsonSlice = firstBrace !== -1 && lastBrace !== -1 ? sanitized.slice(firstBrace, lastBrace + 1) : sanitized;
-  return JSON.parse(jsonSlice);
+  
+  if (firstBrace !== -1 && lastBrace !== -1) {
+      return JSON.parse(sanitized.slice(firstBrace, lastBrace + 1));
+  }
+  return JSON.parse(sanitized);
 };
+
+// --- PROMPT OLUŞTURUCULAR ---
 
 const buildItineraryPrompt = (prompt, preferences) => {
   const preferenceSummary = JSON.stringify(preferences ?? {}, null, 2);
@@ -100,24 +98,34 @@ const buildItineraryPrompt = (prompt, preferences) => {
        - If a duration is explicitly mentioned in the prompt, use that EXACT duration.
        - If NO duration is mentioned, create a highly optimized 1-DAY itinerary.`;
 
-  const lengthInstruction = "IMPORTANT: Keep descriptions concise (max 2 sentences). IF THE TRIP IS 4+ DAYS, LIMIT TO 2-3 STOPS PER DAY to ensure the output fits. You MUST generate an entry for EVERY SINGLE DAY requested. Do NOT bunch stops into fewer days.";
+  const lengthInstruction = "IMPORTANT: Keep descriptions concise (max 2 sentences). IF THE TRIP IS 4+ DAYS, LIMIT TO 2-3 STOPS PER DAY to ensure the output fits. You MUST generate an entry for EVERY SINGLE DAY requested.";
 
   const isMultiDay = (duration ?? 1) > 1;
 
+  // 🔥 GÜNCELLENEN KISIM: İSİM TUZAĞI (NAME TRAP) KURALI EKLENDİ
   return `You are TourWise, an expert AI travel planner known for accuracy and local insights. Create a structured itinerary tailored to the traveler.
 
   ${durationConstraint}
   ${lengthInstruction}
 
+  USER PROMPT: "${prompt}"
+
+  ⛔ STRICT GEOGRAPHIC BOUNDARIES (CRITICAL):
+  1. **CITY LOCK:** If the prompt specifies a city (e.g. "Istanbul"), you MUST NOT suggest places outside that city.
+     - Example: If prompt says "Istanbul", do NOT suggest Sapanca, Bursa, or Cappadocia. Stay strictly within Istanbul city limits.
+  2. **NAME TRAP WARNING:** Do NOT assume a place is in the target city just because it has the city name in its title.
+     - Example: "Erzurum Kumpir" might be a shop located in Istanbul. If the target city is Erzurum, DO NOT suggest "Erzurum Kumpir" unless it is physically in Erzurum.
+     - Always verify the implicit physical location.
+  3. **CONSISTENCY:** Do not jump between distant locations unless explicitly asked for a multi-city trip.
+
   CRITICAL RULES FOR GOOGLE PLACES API COMPATIBILITY:
-  1. REAL ENTITIES ONLY: Every stop must be a real Google Maps Point of Interest (POI) that can be successfully found via Google Places API.
-  2. EXACT NAMES: Use the exact, official name of the place as it appears on Google Maps (e.g., "Louvre Museum" instead of "Visit the art museum").
-  3. SEARCHABLE FALLBACKS: If you cannot verify a specific restaurant/shop, use a major nearby LANDMARK, SQUARE, or STREET NAME as the 'name' (e.g., "Piazza Navona") so the map pin is accurate, and describe the activity in the 'description'.
-  4. NO FAKE NAMES: Never invent business names. If unsure, default to the nearest verifyable landmark.
+  1. REAL ENTITIES ONLY: Every stop must be a real Google Maps Point of Interest (POI).
+  2. EXACT NAMES: Use the exact, official name of the place as it appears on Google Maps.
+  3. NO FAKE NAMES: Never invent business names.
 
   ENRICHMENT RULES:
-  1. CULINARY FOCUS: For lunch and dinner stops, the 'name' MUST be a specific, real restaurant or venue name found on Google Maps. Write the specific dish recommendations in the 'description' or 'notes' field.
-  ${isMultiDay ? `2. ACCOMMODATION: Suggest a REAL, specific hotel name (verifiable on Google Maps) in the "accommodation" object's "name" field, NOT a generic area like "City Center Hotel".` : ''}
+  1. CULINARY FOCUS: For lunch and dinner stops, the 'name' MUST be a specific, real restaurant or venue name.
+  ${isMultiDay ? `2. ACCOMMODATION: Suggest a REAL, specific hotel name in the "accommodation" object.` : ''}
 
   Respond ONLY with JSON that matches the following shape:
 {
@@ -126,29 +134,79 @@ const buildItineraryPrompt = (prompt, preferences) => {
   "durationDays": number,
   "budget": { "currency": string, "amount": number, "perPerson"?: number, "notes"?: string },
   "tags": string[],
-  "days": [ // Must contain exactly ${duration ?? 'the number of days determined by prompt'} items
+  "days": [ 
     {
       "dayNumber": number,
-      "title"?: string,
-      "summary"?: string,
+      "title": string,
+      "summary": string,
       ${isMultiDay ? '"accommodation"?: { "name": string, "location": string, "reason": string },' : ''}
       "stops": [
         {
-          "id": string,
           "name": string,          
-          "description"?: string,
-          "location": { "city": string, "country": string, "address": string, "geo": { "lat": number, "lng": number } },
-          "startTime"?: string,
-          "endTime"?: string,
-          "notes"?: string
+          "description": string,
+          "location": { "city": string, "country": string, "address": string, "geo": { "lat": number, "lng": number } }
         }
       ]
     }
   ]
 }
-Do not add arrivals and departures as itinerary stops. Ensure all place names are exact and searchable on Google Maps.
 Brief: ${prompt}
 Preferences JSON: ${preferenceSummary}`;
+};
+
+
+const buildModificationPrompt = (currentItinerary, userRequest) => {
+  // 1. Mevcut Şehir Bağlamını Bul (Samsun mu, İstanbul mu?)
+  const cityContext = 
+    currentItinerary.preferences?.startingCity || 
+    currentItinerary.days?.[0]?.stops?.[0]?.location?.city || 
+    "the current location";
+
+  // Token tasarrufu için özeti çıkar
+  const simplifiedDays = currentItinerary.days.map(d => ({
+    dayNumber: d.dayNumber,
+    stops: d.stops.map(s => s.name) 
+  }));
+
+  return `
+  You are an expert travel planner modifying an existing itinerary.
+  
+  CONTEXT: The trip is currently taking place in/around: **${cityContext}**.
+  
+  CURRENT ITINERARY STRUCTURE:
+  ${JSON.stringify(simplifiedDays)}
+
+  USER MODIFICATION REQUEST:
+  "${userRequest}"
+
+  ⛔ STRICT GEOGRAPHIC LOCK RULE ⛔:
+  1. **CITY LOCK:** The user is currently in **${cityContext}**. DO NOT suggest places in other cities.
+  2. **NAME TRAP:** Beware of places named after the city but located elsewhere (e.g. "Erzurum Cağ Kebapçısı" located in Ankara). Only suggest places physically located in **${cityContext}**.
+  3. **DISTRICT LOCK:** If the User Request mentions a specific neighborhood, LOCK yourself to that neighborhood.
+
+  INSTRUCTIONS:
+  1. Modify only the parts requested by the user. Keep other days exactly as they are.
+  2. Ensure every new stop has a real "name" verifiable on Google Maps.
+  3. IMPORTANT: For every stop, you MUST include the "location": { "city": "${cityContext}" } field so we can find it on the map.
+  
+  Respond ONLY with the complete updated JSON in this format:
+  {
+    "days": [
+      {
+        "dayNumber": number,
+        "title": string,
+        "summary": string,
+        "stops": [ 
+            { 
+                "name": "Place Name", 
+                "description": "Short desc", 
+                "location": { "city": "${cityContext}" } 
+            } 
+        ]
+      }
+    ]
+  }
+  `;
 };
 
 const buildPoiPrompt = (question, context) => {
@@ -158,22 +216,45 @@ Question: ${question}
 Context: ${contextBlock}`;
 };
 
+// --- ANA SERVİSLER ---
+
 export const requestItineraryPlan = async (prompt, preferences) => {
   if (!openAiClient) {
     return buildFallbackPlan(prompt, preferences);
   }
 
   try {
-    const response = await openAiClient.responses.create({
+    const response = await openAiClient.chat.completions.create({
       model: llmConfig.model,
-      input: buildItineraryPrompt(prompt, preferences),
-      stream: false,
+      messages: [{ role: 'system', content: buildItineraryPrompt(prompt, preferences) }],
+      temperature: 0.7,
     });
 
     return parseResponseJson(response);
   } catch (error) {
     console.error('LLM request failed, returning fallback plan', error);
     return buildFallbackPlan(prompt, preferences);
+  }
+};
+
+export const requestItineraryModification = async (currentItinerary, userRequest) => {
+  if (!openAiClient) {
+    throw new Error("LLM Client not initialized");
+  }
+
+  try {
+    // Şehir bağlamını prompt'a enjekte ediyoruz
+    const prompt = buildModificationPrompt(currentItinerary, userRequest);
+    
+    const response = await openAiClient.chat.completions.create({
+      model: llmConfig.model,
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.7, 
+    });
+    return parseResponseJson(response);
+  } catch (error) {
+    console.error('Itinerary modification failed', error);
+    throw error;
   }
 };
 
@@ -185,15 +266,15 @@ export const requestPoiAnswer = async (question, context) => {
   }
 
   try {
-    const response = await openAiClient.responses.create({
+    const response = await openAiClient.chat.completions.create({
       model: llmConfig.model,
-      input: buildPoiPrompt(question, context),
-      stream: false,
+      messages: [{ role: 'system', content: buildPoiPrompt(question, context) }],
+      temperature: 0.7,
     });
 
     return parseResponseJson(response);
   } catch (error) {
-    console.error('Chatbot request failed, returning fallback message', error);
+    console.error('Chatbot request failed', error);
     return {
       answer: 'We could not contact the AI assistant right now. Please try again in a few minutes.',
     };
@@ -219,37 +300,23 @@ export const analyzeItineraryBudget = async (enrichedPlan) => {
   - Itinerary JSON: ${JSON.stringify(enrichedPlan.days).slice(0, 3000)}... (truncated for token limits)
   
   CRITICAL INSTRUCTIONS FOR COST OF LIVING ADJUSTMENT:
-  1. **Identify the City/Country Economic Tier:**
-     - Tier 1 (Very High Cost): Switzerland, Iceland, NYC, Singapore, Norway. (e.g. Lunch: $30+, Hotel: $200+)
-     - Tier 2 (High Cost): USA, UK, Western Europe (France, Germany), Dubai. (e.g. Lunch: $20+, Hotel: $150+)
-     - Tier 3 (Moderate Cost): Southern Europe (Italy, Spain, Greece). (e.g. Lunch: $15+, Hotel: $100+)
-     - Tier 4 (Low/Medium Cost): Turkey, Southeast Asia, Eastern Europe. (e.g. Lunch: $5-10, Hotel: $50-80)
-
-  2. **Interpret "Price Level" (0-4) LOCALLY:**
-     - A "Price Level 3" (Expensive) restaurant in Istanbul (Tier 4) might cost $40.
-     - A "Price Level 3" (Expensive) restaurant in Zurich (Tier 1) might cost $120.
-     - DO NOT treat Price Level 3 as a fixed global dollar amount. Adjust based on the Tier.
-
-  3. **Estimate Costs:**
-     - **Accommodation:** Assume standard 3-4 star hotel. Adjust heavily by Tier.
-     - **Food:** Calculate based on provided POIs. If no POI for a meal, assume average local cost.
-     - **Transport:** Local transit cost relative to the city (Metro vs Taxi).
-     - **Museums/Tickets:** Use realistic entry fees for major landmarks (e.g. Topkapi Palace is expensive for tourists (~$45), but general Istanbul costs are low).
+  1. Identify the City/Country Economic Tier.
+  2. Estimate Costs for Accommodation, Food, Transport, Tickets.
 
   OUTPUT JSON ONLY:
   {
     "currency": "USD",
-    "amount": number, // Total estimated cost for the whole trip
-    "perPerson": number, // Same as amount (since we calculate for 1)
-    "notes": "Explain the calculation logic based on the country's cost tier (e.g. 'Estimated for High Cost Tier (Zurich). Includes premium dining...')."
+    "amount": number,
+    "perPerson": number,
+    "notes": "Explain the calculation logic."
   }
   `;
 
   try {
-    const response = await openAiClient.responses.create({
+    const response = await openAiClient.chat.completions.create({
       model: llmConfig.model,
-      input: prompt,
-      stream: false,
+      messages: [{ role: 'system', content: prompt }],
+      temperature: 0.5,
     });
     return parseResponseJson(response);
   } catch (error) {
