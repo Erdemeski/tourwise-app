@@ -699,7 +699,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
 
                 {/* Stats Cards */}
                 <div className='grid grid-cols-2 md:grid-cols-4 gap-4 mt-8'>
-                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center'>
+                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center cursor-pointer hover:border-green-500 dark:hover:border-green-400 transition' onClick={() => setActiveTab('shared')}>
                         <div className='flex justify-center mb-2'>
                             <div className='p-2 rounded-full bg-green-100 dark:bg-green-900/30'>
                                 <FaRoute className='w-6 h-6 text-green-600 dark:text-green-400' />
@@ -710,7 +710,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                         </p>
                         <p className='text-sm text-slate-500 dark:text-slate-400'>Paylaşılan Rotalar</p>
                     </div>
-                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center'>
+                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center cursor-pointer hover:border-green-500 dark:hover:border-green-400 transition' onClick={() => setActiveTab('showcase')}>
                         <div className='flex justify-center mb-2'>
                             <div className='p-2 rounded-full bg-green-100 dark:bg-green-900/30'>
                                 <FiBookmark className='w-6 h-6 text-green-600 dark:text-green-400' />
@@ -749,7 +749,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
             {/* Routes Section */}
             <section className='rounded-3xl border border-slate-100 dark:border-gray-700 bg-white dark:bg-[rgb(32,38,43)] p-6 shadow-sm'>
                 <div className='flex flex-col gap-4 mb-6'>
-                    <div className='flex flex-wrap gap-2 border-b border-slate-200 dark:border-gray-700 pb-4'>
+                    <div className='flex flex-wrap gap-2 border-b border-slate-200 dark:border-gray-700 pb-0'>
                         {isOwner && (
                             <button
                                 onClick={() => setActiveTab('created')}

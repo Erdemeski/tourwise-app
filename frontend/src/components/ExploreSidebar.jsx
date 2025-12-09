@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { FiDroplet, FiWind } from 'react-icons/fi';
 
 const FALLBACK_COVER =
     'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80';
 
-// In browser, use Vite/CRA envs; no dotenv on client
-const RAPID_API_HOST = 'open-weather13.p.rapidapi.com';
-const RAPID_API_KEY = '8744312317msh2c048bdb31d2cf9p1a470ejsn4854eaee886b';
+// Open-Meteo API - no API key required
+const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1';
+const GEOCODING_BASE = 'https://geocoding-api.open-meteo.com/v1';
 
 const cityFromRoute = (route = {}) => route.startLocation || route.endLocation || route.city || '';
 
@@ -54,10 +53,74 @@ const ensureCelsius = (temp) => {
     return Math.round(value); // Already Celsius
 };
 
-const formatCityCountry = (data, fallbackCity) => {
-    const city = data?.name || fallbackCity || '';
-    const country = data?.sys?.country || '';
-    return country ? `${city}, ${country}` : city;
+// Convert Open-Meteo weather code to OpenWeather icon
+const weatherCodeToIcon = (code, isDay = true) => {
+    if (code === null || code === undefined) return '01d';
+    const suffix = isDay ? 'd' : 'n';
+    
+    // WMO Weather interpretation codes mapping to OpenWeather icons
+    if (code === 0) return `01${suffix}`; // Clear sky
+    if (code >= 1 && code <= 3) return `${String(code + 1).padStart(2, '0')}${suffix}`; // Mainly clear (02), partly cloudy (03), overcast (04)
+    if (code === 45 || code === 48) return `50${suffix}`; // Fog
+    if (code >= 51 && code <= 55) return `09${suffix}`; // Drizzle
+    if (code === 56 || code === 57) return `13${suffix}`; // Freezing drizzle
+    if (code >= 61 && code <= 65) return `10${suffix}`; // Rain
+    if (code === 66 || code === 67) return `13${suffix}`; // Freezing rain
+    if (code >= 71 && code <= 75) return `13${suffix}`; // Snow fall
+    if (code === 77) return `13${suffix}`; // Snow grains
+    if (code >= 80 && code <= 82) return `09${suffix}`; // Rain showers
+    if (code === 85 || code === 86) return `13${suffix}`; // Snow showers
+    if (code === 95 || code === 96 || code === 99) return `11${suffix}`; // Thunderstorm
+    
+    return `01${suffix}`; // Default to clear sky
+};
+
+// Get weather description from code
+const weatherCodeToDescription = (code) => {
+    if (code === null || code === undefined) return 'Durum bilinmiyor';
+    
+    const descriptions = {
+        0: 'Açık gökyüzü',
+        1: 'Çoğunlukla açık',
+        2: 'Kısmen bulutlu',
+        3: 'Kapalı',
+        45: 'Sis',
+        48: 'Donlu sis',
+        51: 'Hafif çisenti',
+        53: 'Orta çisenti',
+        55: 'Yoğun çisenti',
+        56: 'Hafif donlu çisenti',
+        57: 'Yoğun donlu çisenti',
+        61: 'Hafif yağmur',
+        63: 'Orta yağmur',
+        65: 'Yoğun yağmur',
+        66: 'Hafif donlu yağmur',
+        67: 'Yoğun donlu yağmur',
+        71: 'Hafif kar',
+        73: 'Orta kar',
+        75: 'Yoğun kar',
+        77: 'Kar taneleri',
+        80: 'Hafif sağanak',
+        81: 'Orta sağanak',
+        82: 'Şiddetli sağanak',
+        85: 'Hafif kar sağanağı',
+        86: 'Yoğun kar sağanağı',
+        95: 'Fırtına',
+        96: 'Dolu ile fırtına',
+        99: 'Şiddetli dolu ile fırtına',
+    };
+    
+    return descriptions[code] || 'Durum bilinmiyor';
+};
+
+const formatCityCountry = (geocodingData, fallbackCity) => {
+    if (geocodingData?.results?.[0]) {
+        const result = geocodingData.results[0];
+        const city = result.name || fallbackCity || '';
+        const country = result.country || '';
+        return country ? `${city}, ${country}` : city;
+    }
+    return fallbackCity || '';
 };
 
 const buildAvatarFallback = (name = '') =>
@@ -145,49 +208,86 @@ export default function ExploreSidebar({ highlightRoutes = [], suggestedCreators
 
                 const { city, coords } = target;
 
-                const fetchCoords = async () => {
-                    if (!coords) return null;
-                    const res = await fetch(
-                        `https://${RAPID_API_HOST}/latlon?latitude=${coords.lat}&longitude=${coords.lon}&lang=TR&unit=metric`,
-                        {
-                            headers: {
-                                'x-api-host': RAPID_API_HOST,
-                                'x-api-key': RAPID_API_KEY,
-                                'X-RapidAPI-Host': RAPID_API_HOST,
-                                'X-RapidAPI-Key': RAPID_API_KEY,
-                            },
-                        }
-                    );
-                    return res;
+                // Fetch weather data using coordinates
+                const fetchWeatherByCoords = async (lat, lon) => {
+                    const params = new URLSearchParams({
+                        latitude: lat.toString(),
+                        longitude: lon.toString(),
+                        current: 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day',
+                        daily: 'temperature_2m_max,temperature_2m_min',
+                        timezone: 'auto',
+                        forecast_days: '1',
+                    });
+                    const res = await fetch(`${OPEN_METEO_BASE}/forecast?${params.toString()}`);
+                    if (!res.ok) throw new Error('Hava durumu getirilemedi');
+                    return res.json();
                 };
 
-                const fetchCity = async () => {
-                    if (!city) return null;
-                    const res = await fetch(
-                        `https://${RAPID_API_HOST}/city?city=${encodeURIComponent(city)}&lang=TR&unit=metric`,
-                        {
-                            headers: {
-                                'x-api-host': RAPID_API_HOST,
-                                'x-api-key': RAPID_API_KEY,
-                                'X-RapidAPI-Host': RAPID_API_HOST,
-                                'X-RapidAPI-Key': RAPID_API_KEY,
-                            },
-                        }
-                    );
-                    return res;
+                // Fetch geocoding data for city name
+                const fetchGeocoding = async (cityName) => {
+                    const params = new URLSearchParams({
+                        name: cityName,
+                        count: '1',
+                        language: 'tr',
+                    });
+                    const res = await fetch(`${GEOCODING_BASE}/search?${params.toString()}`);
+                    if (!res.ok) return null;
+                    const data = await res.json();
+                    return data?.results?.[0] || null;
                 };
+
+                // Fetch weather by city name (geocoding first, then weather)
+                const fetchWeatherByCity = async (cityName) => {
+                    const geocoding = await fetchGeocoding(cityName);
+                    if (!geocoding) throw new Error('Şehir bulunamadı');
+                    return fetchWeatherByCoords(geocoding.latitude, geocoding.longitude);
+                };
+
+                let weatherData = null;
+                let geocodingData = null;
 
                 // Prefer coordinates first
-                let res = await fetchCoords();
-                if ((!res || res.status === 404) && city) {
-                    res = await fetchCity();
+                if (coords) {
+                    try {
+                        weatherData = await fetchWeatherByCoords(coords.lat, coords.lon);
+                        // Try to get city name from geocoding
+                        if (city) {
+                            const geo = await fetchGeocoding(city);
+                            if (geo) geocodingData = { results: [geo] };
+                        }
+                    } catch (err) {
+                        // Fallback to city name if coordinates fail
+                        if (city) {
+                            try {
+                                const geo = await fetchGeocoding(city);
+                                if (geo) {
+                                    geocodingData = { results: [geo] };
+                                    weatherData = await fetchWeatherByCoords(geo.latitude, geo.longitude);
+                                } else {
+                                    throw new Error('Hava durumu getirilemedi');
+                                }
+                            } catch (err2) {
+                                throw new Error('Hava durumu getirilemedi');
+                            }
+                        } else {
+                            throw err;
+                        }
+                    }
+                } else if (city) {
+                    // Only city name available
+                    const geo = await fetchGeocoding(city);
+                    if (!geo) throw new Error('Şehir bulunamadı');
+                    geocodingData = { results: [geo] };
+                    weatherData = await fetchWeatherByCoords(geo.latitude, geo.longitude);
+                } else {
+                    throw new Error('Konum bilgisi bulunamadı');
                 }
 
-                if (!res || !res.ok) {
+                if (!weatherData) {
                     throw new Error('Hava durumu getirilemedi');
                 }
-                const data = await res.json();
-                setWeatherItems([{ city, data }]);
+
+                setWeatherItems([{ city, weatherData, geocodingData }]);
             } catch (err) {
                 console.error('Weather fetch failed', err);
                 setWeatherItems([]);
@@ -269,43 +369,76 @@ export default function ExploreSidebar({ highlightRoutes = [], suggestedCreators
                         </span>
                     </div>
                     {weatherLoading ? (
-                        <p className='text-sm text-slate-500 dark:text-slate-400'>Hava durumu yükleniyor...</p>
+                        <div className='space-y-3'>
+                            <div className='rounded-2xl bg-white dark:bg-[rgb(32,38,43)] p-1'>
+                                <div className='flex items-center justify-between gap-3'>
+                                    <div className='flex items-center gap-2'>
+                                        <div className='h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse' />
+                                        <div className='space-y-2'>
+                                            <div className='h-8 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse' />
+                                            <div className='h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded animate-pulse' />
+                                        </div>
+                                    </div>
+                                    <div className='text-right space-y-2'>
+                                        <div className='h-4 w-20 bg-slate-200 dark:bg-slate-700 rounded animate-pulse ml-auto' />
+                                        <div className='h-3 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse ml-auto' />
+                                    </div>
+                                </div>
+                                <div className='flex items-center gap-2 mt-3'>
+                                    <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                        <div className='h-3 w-12 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mb-2' />
+                                        <div className='h-5 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse' />
+                                    </div>
+                                    <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                        <div className='h-3 w-10 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mb-2' />
+                                        <div className='h-5 w-12 bg-slate-200 dark:bg-slate-700 rounded animate-pulse' />
+                                    </div>
+                                    <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                        <div className='h-3 w-16 bg-slate-200 dark:bg-slate-700 rounded animate-pulse mb-2' />
+                                        <div className='h-5 w-14 bg-slate-200 dark:bg-slate-700 rounded animate-pulse' />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     ) : weatherError ? (
                         <p className='text-sm text-red-500'>{weatherError}</p>
                     ) : weatherItems.length > 0 ? (
                         <div className='space-y-3'>
-                            {weatherItems.map(({ city, data }) => {
-                                const mainRaw = data?.main || {};
-                                const main = {
-                                    temp: ensureCelsius(mainRaw.temp),
-                                    temp_min: ensureCelsius(mainRaw.temp_min),
-                                    temp_max: ensureCelsius(mainRaw.temp_max),
-                                    humidity: mainRaw.humidity,
-                                };
-                                const weather = Array.isArray(data?.weather) ? data.weather[0] : null;
-                                const temp = main.temp ?? null;
-                                const tempMin = main.temp_min ?? null;
-                                const tempMax = main.temp_max ?? null;
-                                const humidity = main.humidity;
-                                const wind = data?.wind?.speed;
-                                const locationLabel = formatCityCountry(data, city);
-                                const iconUrl = weather?.icon
-                                    ? `https://openweather.site/img/wn/${weather.icon}.png`
+                            {weatherItems.map(({ city, weatherData, geocodingData }) => {
+                                const current = weatherData?.current || {};
+                                const daily = weatherData?.daily || {};
+                                
+                                const temp = ensureCelsius(current.temperature_2m);
+                                const tempMin = daily.temperature_2m_min?.[0] !== undefined 
+                                    ? ensureCelsius(daily.temperature_2m_min[0]) 
                                     : null;
-                                const windKmh = typeof wind === 'number' ? Math.round(wind * 3.6) : null;
-                                const feelsLike = ensureCelsius(mainRaw.feels_like);
+                                const tempMax = daily.temperature_2m_max?.[0] !== undefined 
+                                    ? ensureCelsius(daily.temperature_2m_max[0]) 
+                                    : null;
+                                const humidity = current.relative_humidity_2m;
+                                const windKmh = current.wind_speed_10m !== undefined 
+                                    ? Math.round(current.wind_speed_10m) 
+                                    : null;
+                                const feelsLike = ensureCelsius(current.apparent_temperature);
+                                const weatherCode = current.weather_code;
+                                const isDay = current.is_day === 1;
+                                
+                                const locationLabel = formatCityCountry(geocodingData, city);
+                                const iconCode = weatherCodeToIcon(weatherCode, isDay);
+                                const iconUrl = `https://openweather.site/img/wn/${iconCode}.png`;
+                                const description = weatherCodeToDescription(weatherCode);
 
                                 return (
                                     <div
                                         key={city}
-                                        className='rounded-2xl bg-white dark:bg-slate-900 p-1'
+                                        className='rounded-2xl bg-white dark:bg-[rgb(32,38,43)] p-1'
                                     >
                                         <div className='flex items-center justify-between gap-3'>
                                             <div className='flex items-center gap-2'>
                                                 {iconUrl ? (
                                                     <img
                                                         src={iconUrl}
-                                                        alt={weather?.description || 'hava durumu'}
+                                                        alt={description}
                                                         className='h-10 w-10'
                                                         loading='lazy'
                                                     />
@@ -317,7 +450,7 @@ export default function ExploreSidebar({ highlightRoutes = [], suggestedCreators
                                                         {temp !== null ? `${temp}°C` : '--'}
                                                     </p>
                                                     <p className='text-sm text-slate-500 dark:text-slate-300 capitalize'>
-                                                        {weather?.description || 'Durum bilinmiyor'}
+                                                        {description}
                                                     </p>
                                                 </div>
                                             </div>
@@ -330,17 +463,17 @@ export default function ExploreSidebar({ highlightRoutes = [], suggestedCreators
                                             </div>
                                         </div>
                                         <div className='flex items-center gap-2'>
-                                            <div className='rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                            <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2'>
                                                 <p className='text-[11px] text-slate-500 dark:text-slate-400'>Rüzgar</p>
                                                 <p className='text-sm font-semibold text-slate-900 dark:text-white'>
                                                     {windKmh !== null ? `${windKmh} km/sa` : '--'}
                                                 </p>
                                             </div>
-                                            <div className='rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                            <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2'>
                                                 <p className='text-[11px] text-slate-500 dark:text-slate-400'>Nem</p>
-                                                <p className='text-sm font-semibold text-slate-900 dark:text-white'>{humidity ?? '--'}%</p>
+                                                <p className='text-sm font-semibold text-slate-900 dark:text-white'>{humidity !== undefined ? `${Math.round(humidity)}%` : '--'}</p>
                                             </div>
-                                            <div className='rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2.5'>
+                                            <div className='flex-1 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-700 p-2'>
                                                 <p className='text-[11px] text-slate-500 dark:text-slate-400'>Hissedilen</p>
                                                 <p className='text-sm font-semibold text-slate-900 dark:text-white'>
                                                     {feelsLike !== null ? `${feelsLike}°C` : '--'}

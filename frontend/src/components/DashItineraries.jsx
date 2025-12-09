@@ -238,29 +238,6 @@ export default function DashItineraries() {
             if (!res.ok) {
                 throw new Error(data.message || 'Failed to mark as finished');
             }
-            // After marking finished, ensure a route entry exists (unshared/private/finished)
-            try {
-                const shareRes = await fetch('/api/routes/from-itinerary', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        itineraryId: selected._id,
-                        sharePublicly: false,
-                        visibility: 'private',
-                        title: data.title,
-                        summary: data.summary,
-                        tags: data.tags,
-                        coverImage: data.coverImage,
-                    }),
-                });
-                if (!shareRes.ok) {
-                    const maybe = await shareRes.json().catch(() => ({}));
-                    console.error('Failed to sync route from itinerary', maybe);
-                }
-            } catch (err) {
-                console.error('Sync route error', err);
-            }
             setSelected(data);
             setItineraries((prev) =>
                 prev.map((item) => (item._id === data._id ? { ...item, ...data } : item))
