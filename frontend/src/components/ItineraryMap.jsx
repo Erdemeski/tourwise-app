@@ -42,7 +42,7 @@ const ItineraryMap = ({ days = [], height = 360 }) => {
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || '',
-    id: 'itinerary-map-script',
+    id: 'google-maps-script',
   });
 
   useEffect(() => {

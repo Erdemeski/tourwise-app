@@ -1,6 +1,9 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
-import { Loader2, MapPin, AlertCircle } from 'lucide-react';
+import { Loader2, MapPin, AlertCircle, Sparkles, Wand2 } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { Highlighter } from './ui/highlighter';
+import { motion, AnimatePresence } from 'motion/react';
 
 const defaultCenter = { lat: 39.0, lng: 35.0 }; // Turkey center
 
@@ -38,12 +41,17 @@ const mapContainerStyle = {
   bottom: 0,
 };
 
-const FullScreenItineraryMap = ({ 
-  days = [], 
-  onStopClick = () => {},
+const FullScreenItineraryMap = ({
+  days = [],
+  onStopClick = () => { },
   selectedStopId = null,
+  isLoading = false,
+  loadingMessage = "Generating Your Itinerary",
+  loadingDescription = "Our AI is crafting the perfect trip for you...",
   className = ''
 }) => {
+  const theme = useSelector((state) => state.theme.theme);
+  const mapKey = `map-${theme}`;
   const apiKey =
     import.meta.env?.VITE_GOOGLE_MAPS_API_KEY ||
     import.meta.env?.GOOGLE_MAPS_API_KEY ||
@@ -53,9 +61,33 @@ const FullScreenItineraryMap = ({
   const [directions, setDirections] = useState(null);
   const [map, setMap] = useState(null);
 
+  const mapOptions = useMemo(() => ({
+    disableDefaultUI: false,
+    zoomControl: true,
+    zoomControlOptions: {
+      position: window.google?.maps?.ControlPosition?.RIGHT_CENTER,
+    },
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+    gestureHandling: 'greedy',
+    colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
+    styles: [
+      {
+        featureType: 'poi',
+        elementType: 'labels',
+        stylers: [{ visibility: 'off' }],
+      },
+      {
+        featureType: 'poi.business',
+        stylers: [{ visibility: 'off' }],
+      },
+    ],
+  }), [theme]);
+
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || '',
-    id: 'fullscreen-itinerary-map-script',
+    id: 'google-maps-script',
   });
 
   // Calculate directions when stops change
@@ -68,7 +100,7 @@ const FullScreenItineraryMap = ({
     const directionsService = new window.google.maps.DirectionsService();
     const origin = stops[0].position;
     const destination = stops[stops.length - 1].position;
-    
+
     const waypoints = stops.slice(1, -1).map(stop => ({
       location: stop.position,
       stopover: true
@@ -91,17 +123,17 @@ const FullScreenItineraryMap = ({
   // Fit bounds when stops change
   useEffect(() => {
     if (!map || !stops.length || !window.google) return;
-    
+
     const bounds = new window.google.maps.LatLngBounds();
     stops.forEach(stop => bounds.extend(stop.position));
-    
+
     // Add some padding
     setTimeout(() => {
-      map.fitBounds(bounds, { 
-        top: 80, 
-        right: 50, 
-        bottom: 150, 
-        left: 50 
+      map.fitBounds(bounds, {
+        top: 80,
+        right: 50,
+        bottom: 150,
+        left: 50
       });
     }, 100);
   }, [map, stops]);
@@ -117,21 +149,50 @@ const FullScreenItineraryMap = ({
   // Custom marker icon using SVG
   const getMarkerIcon = useCallback((index, isSelected) => {
     if (!window.google) return undefined;
-    
+
     const size = isSelected ? 48 : 40;
     const backgroundColor = isSelected ? '#8B5CF6' : '#3B82F6';
-    
+
     return {
       url: `data:image/svg+xml,${encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-          <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${backgroundColor}" stroke="white" stroke-width="3"/>
-          <text x="${size/2}" y="${size/2 + 5}" text-anchor="middle" fill="white" font-size="${size * 0.38}" font-weight="bold" font-family="system-ui, -apple-system, sans-serif">${index + 1}</text>
+          <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 2}" fill="${backgroundColor}" stroke="white" stroke-width="3"/>
+          <text x="${size / 2}" y="${size / 2 + 5}" text-anchor="middle" fill="white" font-size="${size * 0.38}" font-weight="bold" font-family="system-ui, -apple-system, sans-serif">${index + 1}</text>
         </svg>
       `)}`,
       scaledSize: new window.google.maps.Size(size, size),
-      anchor: new window.google.maps.Point(size/2, size/2),
+      anchor: new window.google.maps.Point(size / 2, size / 2),
     };
   }, []);
+
+  // Update map options when theme changes
+  useEffect(() => {
+    if (map && window.google) {
+      map.setOptions({
+        disableDefaultUI: false,
+        zoomControl: true,
+        zoomControlOptions: {
+          position: window.google.maps.ControlPosition.RIGHT_CENTER,
+        },
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        gestureHandling: 'greedy',
+        colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
+        styles: [
+          {
+            featureType: 'poi',
+            elementType: 'labels',
+            stylers: [{ visibility: 'off' }],
+          },
+          {
+            featureType: 'poi.business',
+            stylers: [{ visibility: 'off' }],
+          },
+        ],
+      });
+    }
+  }, [map, theme]);
 
   if (!apiKey) {
     return (
@@ -176,40 +237,20 @@ const FullScreenItineraryMap = ({
     );
   }
 
-  const mapCenter = stops.length > 0 
-    ? stops[Math.floor(stops.length / 2)].position 
+  const mapCenter = stops.length > 0
+    ? stops[Math.floor(stops.length / 2)].position
     : defaultCenter;
 
   return (
     <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
       <GoogleMap
+        key={mapKey}
         mapContainerStyle={mapContainerStyle}
         center={mapCenter}
         zoom={stops.length > 0 ? 10 : 6}
         onLoad={onLoad}
         onUnmount={onUnmount}
-        options={{
-          disableDefaultUI: false,
-          zoomControl: true,
-          zoomControlOptions: {
-            position: window.google?.maps?.ControlPosition?.RIGHT_CENTER,
-          },
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          gestureHandling: 'greedy',
-          styles: [
-            {
-              featureType: 'poi',
-              elementType: 'labels',
-              stylers: [{ visibility: 'off' }],
-            },
-            {
-              featureType: 'poi.business',
-              stylers: [{ visibility: 'off' }],
-            },
-          ],
-        }}
+        options={mapOptions}
       >
         {directions && (
           <DirectionsRenderer
@@ -217,7 +258,7 @@ const FullScreenItineraryMap = ({
             options={{
               suppressMarkers: true,
               polylineOptions: {
-                strokeColor: '#6366f1',
+                strokeColor: `${theme === 'dark' ? '#f5bd4c' : '#6366f1'}`,
                 strokeOpacity: 0.9,
                 strokeWeight: 5,
               },
@@ -236,10 +277,86 @@ const FullScreenItineraryMap = ({
         ))}
       </GoogleMap>
 
+      {/* Loading overlay - when generating itinerary */}
+      <AnimatePresence>
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-50 flex items-center justify-center pointer-events-auto"
+          >
+            {/* Blurred background overlay */}
+            <motion.div
+              initial={{ backdropFilter: 'blur(0px)' }}
+              animate={{ backdropFilter: 'blur(8px)' }}
+              exit={{ backdropFilter: 'blur(0px)' }}
+              transition={{ duration: 0.3 }}
+              className="absolute inset-0 bg-black/20 dark:bg-black/40"
+            />
+            
+            {/* Loading content */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.3, type: 'spring', stiffness: 200 }}
+              className="relative z-10 text-center p-8 bg-white/95 dark:bg-[rgb(22,26,29)]/95 rounded-2xl shadow-2xl backdrop-blur-xl max-w-sm mx-4 border border-slate-200/50 dark:border-slate-700/50"
+            >
+              {/* Animated icon - Sparkles for Generate, Wand2 for Refine */}
+              <motion.div
+                animate={{ 
+                  rotate: [0, 360],
+                  scale: [1, 1.1, 1]
+                }}
+                transition={{ 
+                  rotate: { duration: 2, repeat: Infinity, ease: "linear" },
+                  scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+                }}
+                className="p-4 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 dark:from-violet-500/30 dark:to-indigo-500/30 w-fit mx-auto mb-4"
+              >
+                {loadingMessage.includes("Refining") ? (
+                  <Wand2 className="h-12 w-12 text-violet-500 dark:text-violet-400" />
+                ) : (
+                  <Sparkles className="h-12 w-12 text-violet-500 dark:text-violet-400" />
+                )}
+              </motion.div>
+              
+              {/* Pulsing loader */}
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <motion.div
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  className="h-2 w-2 rounded-full bg-violet-500"
+                />
+                <motion.div
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+                  className="h-2 w-2 rounded-full bg-violet-500"
+                />
+                <motion.div
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+                  className="h-2 w-2 rounded-full bg-violet-500"
+                />
+              </div>
+              
+              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                {loadingMessage}
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {loadingDescription}
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Empty state overlay - only when no itinerary selected */}
-      {stops.length === 0 && (
+      {stops.length === 0 && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center p-8 bg-white/95 dark:bg-slate-800/95 rounded-2xl shadow-2xl backdrop-blur-sm max-w-sm mx-4">
+          <div className="text-center p-8 bg-white/95 dark:bg-[rgb(22,26,29)]/95 rounded-2xl shadow-2xl backdrop-blur-sm max-w-sm mx-4">
             <div className="p-4 rounded-full bg-blue-100 dark:bg-blue-900/30 w-fit mx-auto mb-4">
               <MapPin className="h-12 w-12 text-blue-500" />
             </div>
@@ -247,7 +364,14 @@ const FullScreenItineraryMap = ({
               Welcome to Your Itineraries
             </h3>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Select an itinerary from the list or generate a new one to see it on the map
+              <Highlighter action="underline" color="#FF9800">
+                Select
+              </Highlighter>{" "}
+              an itinerary from the list or{" "}
+              <Highlighter action="underline" color="#87CEFA">
+                Generate
+              </Highlighter>{" "}
+              a new one to see it on the map
             </p>
           </div>
         </div>

@@ -36,7 +36,7 @@ const DrawerContent = React.forwardRef(({ className, children, ...props }, ref) 
       <DrawerPrimitive.Content
         ref={ref}
         className={cn(
-          "pointer-events-auto flex flex-col bg-background border-t border-x shadow-xl",
+          "pointer-events-auto flex flex-col bg-background dark:bg-[rgb(22,26,29)] border-t border-x shadow-xl",
           "w-full md:w-3/4 md:max-w-4xl",
           "rounded-t-[20px]",
           className
@@ -46,7 +46,7 @@ const DrawerContent = React.forwardRef(({ className, children, ...props }, ref) 
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-4 pb-2">
-          <div className="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-600" />
+          <div className="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-white" />
         </div>
         {children}
       </DrawerPrimitive.Content>
@@ -75,7 +75,7 @@ const DrawerTitle = React.forwardRef(({ className, ...props }, ref) => (
   <DrawerPrimitive.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight text-foreground",
+      "text-lg font-semibold leading-none tracking-tight text-white",
       className
     )}
     {...props}
@@ -86,7 +86,7 @@ DrawerTitle.displayName = DrawerPrimitive.Title.displayName
 const DrawerDescription = React.forwardRef(({ className, ...props }, ref) => (
   <DrawerPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm text-white", className)}
     {...props}
   />
 ))

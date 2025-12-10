@@ -10,6 +10,19 @@ import { app } from '../firebase';
 import { CircularProgressbar } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import { updateSuccess } from '../redux/user/userSlice';
+import { Loader2 } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from './ui/dialog';
+import { Button as ShButton } from './ui/button';
+import { Label as ShLabel } from './ui/label';
+import { Input as ShInput } from './ui/input';
+import { Textarea as ShTextarea } from './ui/textarea';
 
 const FALLBACK_AVATAR = 'https://i.pravatar.cc/150?img=47';
 const FALLBACK_BANNER = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=2000&q=80';
@@ -841,20 +854,26 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                 )}
             </section>
 
-            {/* Share Route Modal */}
-            <Modal show={showShareModal} onClose={() => setShowShareModal(false)} size='md'>
-                <Modal.Header>Share Route</Modal.Header>
-                <Modal.Body>
+            {/* Share Route Dialog (shadcn) */}
+            <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
+                <DialogContent className='max-w-lg max-h-[80vh] overflow-y-auto dark:bg-[rgb(22,26,29)] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent'>
+                    <DialogHeader>
+                        <DialogTitle>Share Route</DialogTitle>
+                        <DialogDescription>
+                            Publish to forum or add to your profile showcase.
+                        </DialogDescription>
+                    </DialogHeader>
                     <div className='space-y-4'>
                         <div>
-                            <Label>Share Type</Label>
-                            <Select
+                            <ShLabel>Share Type</ShLabel>
+                            <select
+                                className='mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm'
                                 value={shareForm.shareType}
                                 onChange={(e) => setShareForm((prev) => ({ ...prev, shareType: e.target.value }))}
                             >
                                 <option value='forum'>Share on Forum (Public)</option>
                                 <option value='showcase'>Add to Showcase (Profile Only)</option>
-                            </Select>
+                            </select>
                             <p className='text-xs text-slate-500 dark:text-slate-400 mt-1'>
                                 {shareForm.shareType === 'forum'
                                     ? 'Your route will be visible to everyone on the forum'
@@ -862,50 +881,59 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                             </p>
                         </div>
                         <div>
-                            <Label>Highlights (optional)</Label>
-                            <Textarea
+                            <ShLabel>Highlights (optional)</ShLabel>
+                            <ShTextarea
                                 rows={3}
                                 value={shareForm.highlights}
                                 onChange={(e) => setShareForm((prev) => ({ ...prev, highlights: e.target.value }))}
                                 placeholder='Add key highlights of your route...'
+                                className='mt-1'
                             />
                         </div>
                         <div>
-                            <Label>Tips (optional)</Label>
-                            <Textarea
+                            <ShLabel>Tips (optional)</ShLabel>
+                            <ShTextarea
                                 rows={3}
                                 value={shareForm.tips}
                                 onChange={(e) => setShareForm((prev) => ({ ...prev, tips: e.target.value }))}
                                 placeholder='Add helpful tips for travelers...'
+                                className='mt-1'
                             />
                         </div>
                         {shareError && <Alert color='failure'>{shareError}</Alert>}
                     </div>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button color='gray' onClick={() => setShowShareModal(false)}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleShareSubmit} isProcessing={shareLoading}>
-                        {shareForm.shareType === 'forum' ? 'Share on Forum' : 'Add to Showcase'}
-                    </Button>
-                </Modal.Footer>
-            </Modal>
+                    <DialogFooter>
+                        <ShButton variant='outline' onClick={() => setShowShareModal(false)}>
+                            Cancel
+                        </ShButton>
+                        <ShButton onClick={handleShareSubmit} disabled={shareLoading}>
+                            {shareLoading && <Loader2 className='h-4 w-4 mr-2 animate-spin' />}
+                            {shareForm.shareType === 'forum' ? 'Share on Forum' : 'Add to Showcase'}
+                        </ShButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-            {/* Visibility Settings Modal */}
-            <Modal show={showVisibilityModal} onClose={() => setShowVisibilityModal(false)} size='md'>
-                <Modal.Header>Update Route Visibility</Modal.Header>
-                <Modal.Body>
+            {/* Visibility Settings Dialog (shadcn) */}
+            <Dialog open={showVisibilityModal} onOpenChange={setShowVisibilityModal}>
+                <DialogContent className='max-w-md max-h-[70vh] overflow-y-auto dark:bg-[rgb(22,26,29)] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent'>
+                    <DialogHeader>
+                        <DialogTitle>Update Route Visibility</DialogTitle>
+                        <DialogDescription>
+                            Control who can see this route.
+                        </DialogDescription>
+                    </DialogHeader>
                     <div className='space-y-4'>
                         <div>
-                            <Label>Visibility</Label>
-                            <Select
+                            <ShLabel>Visibility</ShLabel>
+                            <select
+                                className='mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm'
                                 value={visibilityForm.visibility}
                                 onChange={(e) => setVisibilityForm((prev) => ({ ...prev, visibility: e.target.value }))}
                             >
                                 <option value='public'>Public (Visible on Forum)</option>
                                 <option value='private'>Private (Showcase Only)</option>
-                            </Select>
+                            </select>
                             <p className='text-xs text-slate-500 dark:text-slate-400 mt-1'>
                                 {visibilityForm.visibility === 'public'
                                     ? 'Your route will be visible to everyone on the forum'
@@ -913,7 +941,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                             </p>
                         </div>
                         {routeToUpdate && (
-                            <div className='p-3 bg-slate-50 dark:bg-gray-800 rounded-lg'>
+                            <div className='p-3 bg-slate-50 dark:bg-gray-800 rounded-lg border border-slate-200 dark:border-slate-700'>
                                 <p className='text-sm font-medium text-slate-900 dark:text-white mb-1'>
                                     {routeToUpdate.title}
                                 </p>
@@ -924,25 +952,32 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                         )}
                         {visibilityError && <Alert color='failure'>{visibilityError}</Alert>}
                     </div>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button color='gray' onClick={() => setShowVisibilityModal(false)}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleVisibilitySubmit} isProcessing={visibilityLoading}>
-                        Update Visibility
-                    </Button>
-                </Modal.Footer>
-            </Modal>
+                    <DialogFooter>
+                        <ShButton variant='outline' onClick={() => setShowVisibilityModal(false)}>
+                            Cancel
+                        </ShButton>
+                        <ShButton onClick={handleVisibilitySubmit} disabled={visibilityLoading}>
+                            {visibilityLoading && <Loader2 className='h-4 w-4 mr-2 animate-spin' />}
+                            Update Visibility
+                        </ShButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
-            {/* Edit Profile Modal */}
-            <Modal show={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} size='4xl'>
-                <Modal.Header>Edit Profile</Modal.Header>
-                <Modal.Body>
+            {/* Edit Profile Dialog (shadcn) */}
+            <Dialog open={showEditProfileModal} onOpenChange={setShowEditProfileModal}>
+                <DialogContent className='max-w-5xl max-h-[85vh] overflow-y-auto dark:bg-[rgb(22,26,29)] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent'>
+                    <DialogHeader>
+                        <DialogTitle>Edit Profile</DialogTitle>
+                        <DialogDescription>
+                            Update your cover, avatar, and personal details.
+                        </DialogDescription>
+                    </DialogHeader>
+
                     <div className='space-y-6'>
                         {/* Banner Image */}
                         <div>
-                            <Label>Banner Image</Label>
+                            <ShLabel>Banner Image</ShLabel>
                             <div className='relative mt-2'>
                                 <input
                                     type='file'
@@ -975,14 +1010,14 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                                     />
                                 </div>
                                 <p className='text-xs text-slate-500 dark:text-slate-400 mt-1'>
-                                    Click to upload banner image
+                                    Click to upload banner image (must be max 5MB)
                                 </p>
                             </div>
                         </div>
 
                         {/* Profile Picture */}
                         <div>
-                            <Label>Profile Picture</Label>
+                            <ShLabel>Profile Picture</ShLabel>
                             <div className='flex items-center gap-4 mt-2'>
                                 <input
                                     type='file'
@@ -1015,7 +1050,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                                     />
                                 </div>
                                 <p className='text-sm text-slate-600 dark:text-slate-400'>
-                                    Click to change profile picture
+                                    Click to change profile picture (must be max 5MB)
                                 </p>
                             </div>
                         </div>
@@ -1023,8 +1058,8 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                         {/* First Name & Last Name */}
                         <div className='grid grid-cols-2 gap-4'>
                             <div>
-                                <Label htmlFor='firstName'>First Name</Label>
-                                <TextInput
+                                <ShLabel htmlFor='firstName'>First Name</ShLabel>
+                                <ShInput
                                     id='firstName'
                                     value={editFormData.firstName}
                                     onChange={handleEditFormChange}
@@ -1032,8 +1067,8 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                                 />
                             </div>
                             <div>
-                                <Label htmlFor='lastName'>Last Name</Label>
-                                <TextInput
+                                <ShLabel htmlFor='lastName'>Last Name</ShLabel>
+                                <ShInput
                                     id='lastName'
                                     value={editFormData.lastName}
                                     onChange={handleEditFormChange}
@@ -1044,8 +1079,8 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
 
                         {/* Location */}
                         <div>
-                            <Label htmlFor='location'>Location</Label>
-                            <TextInput
+                            <ShLabel htmlFor='location'>Location</ShLabel>
+                            <ShInput
                                 id='location'
                                 value={editFormData.location}
                                 onChange={handleEditFormChange}
@@ -1055,8 +1090,8 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
 
                         {/* Bio */}
                         <div>
-                            <Label htmlFor='bio'>Bio</Label>
-                            <Textarea
+                            <ShLabel htmlFor='bio'>Bio</ShLabel>
+                            <ShTextarea
                                 id='bio'
                                 rows={4}
                                 value={editFormData.bio}
@@ -1071,28 +1106,33 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
 
                         {editError && <Alert color='failure'>{editError}</Alert>}
                     </div>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button color='gray' onClick={() => setShowEditProfileModal(false)}>
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleEditProfileSubmit}
-                        isProcessing={editLoading || profileImageUploading || bannerImageUploading}
-                        disabled={profileImageUploading || bannerImageUploading}
-                    >
-                        Save Changes
-                    </Button>
-                </Modal.Footer>
-            </Modal>
 
-            {/* Followers / Following Modal */}
-            <Modal show={Boolean(showRelationsModal)} onClose={() => setShowRelationsModal(null)} size='md'>
-                <Modal.Header>
-                    {showRelationsModal === 'followers' ? 'Followers' : 'Following'}
-                </Modal.Header>
-                <Modal.Body>
-                    <div className='space-y-3 max-h-96 overflow-y-auto'>
+                    <DialogFooter className='pt-4'>
+                        <ShButton variant='outline' onClick={() => setShowEditProfileModal(false)}>
+                            Cancel
+                        </ShButton>
+                        <ShButton
+                            onClick={handleEditProfileSubmit}
+                            disabled={editLoading || profileImageUploading || bannerImageUploading}
+                        >
+                            {(editLoading || profileImageUploading || bannerImageUploading) && (
+                                <Loader2 className='h-4 w-4 mr-2 animate-spin' />
+                            )}
+                            Save Changes
+                        </ShButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Followers / Following Dialog (shadcn) */}
+            <Dialog open={Boolean(showRelationsModal)} onOpenChange={() => setShowRelationsModal(null)}>
+                <DialogContent className='max-w-md max-h-[75vh] overflow-y-auto dark:bg-[rgb(22,26,29)] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent'>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {showRelationsModal === 'followers' ? 'Followers' : 'Following'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className='space-y-3 max-h-[60vh] overflow-y-auto'>
                         {(showRelationsModal === 'followers' ? relations.followers : relations.following || []).map((user) => (
                             <Link
                                 to={`/user/${user.username}`}
@@ -1120,8 +1160,8 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                             <p className='text-sm text-slate-500 dark:text-slate-400 text-center py-4'>No users found.</p>
                         )}
                     </div>
-                </Modal.Body>
-            </Modal>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

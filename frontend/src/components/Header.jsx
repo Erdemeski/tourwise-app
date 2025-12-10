@@ -85,7 +85,7 @@ export default function Header() {
                     <span className='pl-1.5 pr-0.5 mr-0.5 py-1 bg-gradient-to-r from-blue-500 via-teal-400 to-cyan-400 rounded-lg text-white'>Tour</span>
                     <span className=''>wise</span>
                 </Link>
-                {!path.startsWith('/explore') && (
+                {!path.startsWith('/explore') && !path.startsWith('/my-itineraries') && (
                     <>
                         <form onSubmit={handleSearch}>
                             <TextInput
