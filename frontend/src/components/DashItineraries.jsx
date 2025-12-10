@@ -819,7 +819,7 @@ export default function DashItineraries() {
                                                             {selected.budget.currency} {selected.budget.amount}
                                                         </span>
                                                         {selected.budget.perPerson && (
-                                                            <span className="text-sm text-emerald-600 dark:text-emerald-400">
+                                                            <span className="text-xs sm:text-sm text-emerald-600 dark:text-emerald-400">
                                                                 (~{selected.budget.currency} {selected.budget.perPerson}/person)
                                                             </span>
                                                         )}

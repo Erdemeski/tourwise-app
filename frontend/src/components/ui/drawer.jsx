@@ -5,10 +5,14 @@ import { cn } from "@/lib/utils"
 
 const Drawer = ({
   shouldScaleBackground = false,
+  snapPoints = [0.7, 1],
+  defaultSnap = 0.7,
   ...props
 }) => (
   <DrawerPrimitive.Root
     shouldScaleBackground={shouldScaleBackground}
+    snapPoints={snapPoints}
+    defaultSnap={defaultSnap}
     {...props}
   />
 )
@@ -41,7 +45,6 @@ const DrawerContent = React.forwardRef(({ className, children, ...props }, ref) 
           "rounded-t-[20px]",
           className
         )}
-        style={{ transform: 'none' }}
         {...props}
       >
         {/* Drag handle */}
