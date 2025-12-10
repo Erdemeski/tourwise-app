@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import React from 'react'
 import HomePage from './pages/HomePage.jsx';
 import AboutPage from './pages/AboutPage.jsx';
@@ -20,9 +20,14 @@ import ContantUs from './pages/ContactUs.jsx';
 import ExploreRoutes from './pages/ExploreRoutes.jsx';
 import UserProfilePage from './pages/UserProfilePage.jsx';
 
-export default function App() {
+function AppContent() {
+  const location = useLocation();
+  
+  // Hide footer on full-screen map pages
+  const hideFooter = location.pathname === '/my-itineraries';
+
   return (
-    <BrowserRouter>
+    <>
       <ScrollToTop />
       <Header />
       <Routes>
@@ -47,10 +52,16 @@ export default function App() {
         </Route>
 
         <Route path="/routes/:slug" element={<RouteDetailsPage />} />
-
-
       </Routes>
-      <Footer />
+      {!hideFooter && <Footer />}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   )
 }

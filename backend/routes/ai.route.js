@@ -31,3 +31,4 @@ router.post("/chatbot", verifyToken, askItineraryChatbot);
 router.post('/itineraries/:id/modify', verifyToken, modifyAiItinerary);
 
 export default router;
+

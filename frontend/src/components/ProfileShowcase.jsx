@@ -710,7 +710,7 @@ export default function ProfileShowcase({ username, /* onEditProfile = () => {} 
                         </p>
                         <p className='text-sm text-slate-500 dark:text-slate-400'>Paylaşılan Rotalar</p>
                     </div>
-                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center cursor-pointer hover:border-green-500 dark:hover:border-green-400 transition' onClick={() => setActiveTab('showcase')}>
+                    <div className='rounded-2xl bg-white dark:bg-[rgb(22,26,29)] border border-slate-100 dark:border-gray-700 p-3 text-center cursor-pointer hover:border-green-500 dark:hover:border-green-400 transition' onClick={() => setActiveTab('saved')}>
                         <div className='flex justify-center mb-2'>
                             <div className='p-2 rounded-full bg-green-100 dark:bg-green-900/30'>
                                 <FiBookmark className='w-6 h-6 text-green-600 dark:text-green-400' />
