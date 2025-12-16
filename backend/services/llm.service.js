@@ -10,6 +10,11 @@ const llmConfig = {
 
 // --- YARDIMCI FONKSİYONLAR ---
 
+const supportsCustomTemperature = (model) => {
+  const normalized = model?.toLowerCase() ?? '';
+  return !normalized.startsWith('gpt-5');
+};
+
 const openAiClient = (() => {
   if (!llmConfig.apiKey) {
     console.warn('[LLM] No API key detected (set LLM_API_KEY or OPENAI_API_KEY). Falling back to offline scaffold.');
@@ -26,6 +31,35 @@ const openAiClient = (() => {
     return null;
   }
 })();
+
+const isTemperatureUnsupported = (error) => {
+  const param = error?.param ?? error?.error?.param;
+  const code = error?.code ?? error?.error?.code;
+  if (param === 'temperature') return true;
+  if (code === 'unsupported_value' && param === 'temperature') return true;
+  const message = error?.message ?? error?.error?.message;
+  return typeof message === 'string' && message.toLowerCase().includes('temperature') && message.toLowerCase().includes('supported');
+};
+
+const safeChatCompletion = async ({ messages, temperature }) => {
+  const allowTemperature = supportsCustomTemperature(llmConfig.model);
+  const payload = {
+    model: llmConfig.model,
+    messages,
+    ...(temperature !== undefined && allowTemperature ? { temperature } : {}),
+  };
+
+  try {
+    return await openAiClient.chat.completions.create(payload);
+  } catch (error) {
+    if (temperature !== undefined && allowTemperature && isTemperatureUnsupported(error)) {
+      console.warn(`[LLM] Model ${llmConfig.model} does not support custom temperature. Retrying with default.`);
+      const { temperature: _ignored, ...fallbackPayload } = payload;
+      return await openAiClient.chat.completions.create(fallbackPayload);
+    }
+    throw error;
+  }
+};
 
 // B planı: API Key yoksa veya hata alınırsa dönecek taslak
 const buildFallbackPlan = (prompt, preferences) => {
@@ -224,8 +258,7 @@ export const requestItineraryPlan = async (prompt, preferences) => {
   }
 
   try {
-    const response = await openAiClient.chat.completions.create({
-      model: llmConfig.model,
+    const response = await safeChatCompletion({
       messages: [{ role: 'system', content: buildItineraryPrompt(prompt, preferences) }],
       temperature: 0.7,
     });
@@ -246,8 +279,7 @@ export const requestItineraryModification = async (currentItinerary, userRequest
     // Şehir bağlamını prompt'a enjekte ediyoruz
     const prompt = buildModificationPrompt(currentItinerary, userRequest);
     
-    const response = await openAiClient.chat.completions.create({
-      model: llmConfig.model,
+    const response = await safeChatCompletion({
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.7, 
     });
@@ -266,8 +298,7 @@ export const requestPoiAnswer = async (question, context) => {
   }
 
   try {
-    const response = await openAiClient.chat.completions.create({
-      model: llmConfig.model,
+    const response = await safeChatCompletion({
       messages: [{ role: 'system', content: buildPoiPrompt(question, context) }],
       temperature: 0.7,
     });
@@ -313,8 +344,7 @@ export const analyzeItineraryBudget = async (enrichedPlan) => {
   `;
 
   try {
-    const response = await openAiClient.chat.completions.create({
-      model: llmConfig.model,
+    const response = await safeChatCompletion({
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.5,
     });

@@ -6,6 +6,7 @@ import {
     generationSchema,
     updateAiItinerarySchema
 } from "../utils/aiValidators.js";
+import { generateItineraryCoverImage } from "../services/image.service.js";
 
 // SENİN EKLEDİĞİN IMPORTLAR (KORUNDU)
 import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget, requestItineraryModification } from "../services/llm.service.js";
@@ -103,10 +104,24 @@ export const generateAiItinerary = async (req, res, next) => {
         console.log("3. Analyzing budget...");
         const budgetAnalysis = await analyzeItineraryBudget(enrichedPlan);
 
-        console.log("4. Saving itinerary to database...");
+        const primaryStop = enrichedPlan?.days?.[0]?.stops?.[0];
+        console.log("4. Generating AI cover image...");
+        const { url: coverImageUrl } = await generateItineraryCoverImage({
+            title: enrichedPlan.title,
+            summary: enrichedPlan.summary,
+            city: preferences?.startingCity || primaryStop?.location?.city,
+            country: primaryStop?.location?.country,
+            tags: enrichedPlan.tags,
+            travelStyles: preferences?.travelStyles,
+            durationDays: enrichedPlan.durationDays,
+            userPrompt: prompt,
+        });
+
+        console.log("5. Saving itinerary to database...");
         const normalizedPlan = aiItinerarySchema.parse({
             ...enrichedPlan,
             budget: budgetAnalysis,
+            coverImage: coverImageUrl || enrichedPlan.coverImage,
         });
 
         const days = Array.isArray(normalizedPlan.days) ? normalizedPlan.days : [];
@@ -122,6 +137,7 @@ export const generateAiItinerary = async (req, res, next) => {
             durationDays: normalizedPlan.durationDays,
             budget: normalizedPlan.budget,
             tags: sanitizeArray(normalizedPlan.tags),
+            coverImage: normalizedPlan.coverImage,
             days,
             waypointList,
             visibility: "private",
@@ -147,7 +163,7 @@ export const listAiItineraries = async (req, res, next) => {
         const isAdmin = req.user?.isAdmin === true;
         const projection =
             view === "compact"
-                ? "title summary tags updatedAt createdAt status durationDays prompt budget publishedRouteId source userId"
+                ? "title summary tags updatedAt createdAt status durationDays prompt budget publishedRouteId source userId coverImage"
                 : undefined;
 
         // Admin can see all AI itineraries, regular users only see their own
@@ -331,6 +347,7 @@ export const copyItineraryToUser = async (req, res, next) => {
             preferences: source.preferences,
             durationDays: source.durationDays,
             budget: source.budget,
+            coverImage: source.coverImage,
             tags: source.tags,
             days: source.days,
             waypointList: source.waypointList,

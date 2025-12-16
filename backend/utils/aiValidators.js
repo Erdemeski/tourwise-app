@@ -58,6 +58,7 @@ export const aiItinerarySchema = z.object({
   summary: z.string().min(10),
   durationDays: z.number().int().min(1),
   budget: budgetSchema.optional(),
+  coverImage: z.string().optional(),
   tags: z.array(z.string()).default([]),
   days: z.array(daySchema).min(1),
   prompt: z.string().optional(),
@@ -78,7 +79,6 @@ export const chatbotSchema = z.object({
     })
     .optional(),
 });
-
 
 
 
