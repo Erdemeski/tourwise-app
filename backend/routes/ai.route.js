@@ -33,13 +33,5 @@ router.patch('/itineraries/:id/move', verifyToken, moveStopBetweenDays);
 router.post('/itineraries/:id/copy', verifyToken, copyItineraryToUser);
 router.patch('/itineraries/:id/share', verifyToken, shareItinerary); // Status update için
 
-<<<<<<< HEAD
 export default router;
 
-
-
-
-
-=======
-export default router;
->>>>>>> a49cf5c38bb841ef05d47a5e4e5743cad75d9a8c
