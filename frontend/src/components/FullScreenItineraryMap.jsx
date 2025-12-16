@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
-import { Loader2, AlertCircle, Sparkles, Wand2, MapPin, Car, Bus, Footprints, Train } from 'lucide-react';
+import { Loader2, AlertCircle, Sparkles, Wand2, MapPin, Car, Bus, Footprints } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { Highlighter } from './ui/highlighter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,7 +53,7 @@ const FullScreenItineraryMap = ({
   
   const [singleDirection, setSingleDirection] = useState(null);
   const [transitDirections, setTransitDirections] = useState([]);
-  const [transitBadges, setTransitBadges] = useState([]); // Şık etiketler için state
+  const [transitBadges, setTransitBadges] = useState([]);
 
   const [map, setMap] = useState(null);
   const [travelMode, setTravelMode] = useState('DRIVING'); 
@@ -91,7 +91,7 @@ const FullScreenItineraryMap = ({
 
     const directionsService = new window.google.maps.DirectionsService();
 
-    // 1. TOPLU TAŞIMA MODU (TRANSIT) - Detaylı ve Renkli
+    // 1. TOPLU TAŞIMA MODU (TRANSIT)
     if (travelMode === 'TRANSIT') {
         setSingleDirection(null);
         setTransitBadges([]); 
@@ -99,24 +99,21 @@ const FullScreenItineraryMap = ({
         const fetchTransitLegs = async () => {
             const promises = [];
             
-            // Her durak arası için (Leg) istek at
             for (let i = 0; i < stops.length - 1; i++) {
                 const request = {
                     origin: stops[i].position,
                     destination: stops[i + 1].position,
                     travelMode: window.google.maps.TravelMode.TRANSIT,
                     transitOptions: {
-                        routingPreference: 'FEWER_TRANSFERS', // Daha az aktarma tercih et
-                        modes: ['BUS', 'RAIL', 'SUBWAY', 'TRAIN', 'TRAM'] // Hepsini kapsa
+                        routingPreference: 'FEWER_TRANSFERS', 
+                        modes: ['BUS', 'RAIL', 'SUBWAY', 'TRAIN', 'TRAM']
                     },
-                    provideRouteAlternatives: true // Alternatifleri iste (API desteklerse)
+                    provideRouteAlternatives: true
                 };
                 
                 promises.push(new Promise((resolve) => {
                     directionsService.route(request, (result, status) => {
                         if (status === window.google.maps.DirectionsStatus.OK) {
-                            // Alternatiflerden en kısa olanı (ilkini) alıyoruz şimdilik
-                            // (Alternatifleri haritada aynı anda göstermek karmaşa yaratır)
                             resolve(result); 
                         } else {
                             resolve(null);
@@ -129,36 +126,33 @@ const FullScreenItineraryMap = ({
             const validResults = results.filter(res => res !== null);
             setTransitDirections(validResults);
 
-            // --- GÖRSEL ETİKET OLUŞTURMA (BADGES) ---
+            // GÖRSEL ETİKETLER (BADGES)
             const badges = [];
             validResults.forEach(result => {
-                const route = result.routes[0]; // En iyi rota
+                const route = result.routes[0]; 
                 const legs = route.legs;
                 
                 legs.forEach(leg => {
                     leg.steps.forEach(step => {
-                        // Sadece Toplu Taşıma adımlarını yakala
                         if (step.travel_mode === 'TRANSIT' && step.transit) {
                             const line = step.transit.line;
                             
-                            // Renk Seçimi: API rengi varsa kullan, yoksa araç tipine göre varsayılan ata
-                            let badgeColor = line.color || '#4b5563'; // Varsayılan gri
+                            let badgeColor = line.color || '#4b5563'; 
                             if (!line.color) {
-                                if (line.vehicle.type === 'BUS') badgeColor = '#f59e0b'; // Otobüs Turuncu
-                                if (line.vehicle.type === 'SUBWAY') badgeColor = '#ef4444'; // Metro Kırmızı
-                                if (line.vehicle.type === 'TRAM') badgeColor = '#10b981'; // Tramvay Yeşil
+                                if (line.vehicle.type === 'BUS') badgeColor = '#f59e0b';
+                                if (line.vehicle.type === 'SUBWAY') badgeColor = '#ef4444';
+                                if (line.vehicle.type === 'TRAM') badgeColor = '#10b981';
                             }
 
-                            // İsim Seçimi: Short Name (14ES) -> Name (Kadıköy Metrosu)
                             const label = line.short_name || line.name || line.vehicle.name;
 
                             badges.push({
-                                position: step.start_location, // Binilen yer
+                                position: step.start_location,
                                 label: label,
                                 color: badgeColor,
                                 textColor: line.text_color || '#ffffff',
-                                icon: line.vehicle.icon, // Google ikonu
-                                headsign: step.transit.headsign, // Yön (Eminönü)
+                                icon: line.vehicle.icon, 
+                                headsign: step.transit.headsign, 
                                 details: `${step.duration.text} • ${step.transit.num_stops} stops`
                             });
                         }
@@ -199,7 +193,6 @@ const FullScreenItineraryMap = ({
 
   }, [isLoaded, stops, travelMode]);
 
-  // --- HARİTA RENDER ---
   useEffect(() => {
     if (!map || !stops.length || !window.google) return;
     const bounds = new window.google.maps.LatLngBounds();
@@ -247,14 +240,16 @@ const FullScreenItineraryMap = ({
   return (
     <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
       
-      {/* MOD SEÇİCİ */}
+      {/* --- DÜZELTİLDİ: MOD SEÇİCİ ARTIK ORTADA --- */}
+      {/* Daha önce 'left-4' idi, şimdi 'left-1/2 -translate-x-1/2' yaptık. */}
       {!selectionMode && stops.length > 1 && (
-        <div className="absolute top-4 left-4 z-40 bg-white dark:bg-slate-800 p-1.5 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex gap-1">
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-40 bg-white dark:bg-slate-800 p-1.5 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex gap-1">
             <Button size="sm" variant={travelMode === 'DRIVING' ? 'default' : 'ghost'} onClick={() => setTravelMode('DRIVING')} className="h-8 px-3" title="Driving"><Car className="h-4 w-4" /></Button>
             <Button size="sm" variant={travelMode === 'TRANSIT' ? 'default' : 'ghost'} onClick={() => setTravelMode('TRANSIT')} className="h-8 px-3" title="Public Transit"><Bus className="h-4 w-4" /></Button>
             <Button size="sm" variant={travelMode === 'WALKING' ? 'default' : 'ghost'} onClick={() => setTravelMode('WALKING')} className="h-8 px-3" title="Walking"><Footprints className="h-4 w-4" /></Button>
         </div>
       )}
+      {/* ------------------------------------------- */}
 
       <GoogleMap
         key={mapKey}
@@ -277,7 +272,7 @@ const FullScreenItineraryMap = ({
                             suppressMarkers: true,
                             preserveViewport: true,
                             polylineOptions: { 
-                                strokeColor: '#3b82f6', // Nötr mavi ana hat
+                                strokeColor: '#3b82f6', 
                                 strokeOpacity: 0.6, 
                                 strokeWeight: 5 
                             }
@@ -285,7 +280,7 @@ const FullScreenItineraryMap = ({
                     />
                 ))}
 
-                {/* --- ÖZEL TASARIM OTOBÜS ETİKETLERİ (BADGES) --- */}
+                {/* ÖZEL TASARIM OTOBÜS ETİKETLERİ */}
                 {transitBadges.map((badge, i) => (
                     <InfoWindow
                         key={`badge-${i}`}
@@ -293,12 +288,10 @@ const FullScreenItineraryMap = ({
                         options={{ 
                             disableAutoPan: true, 
                             pixelOffset: new window.google.maps.Size(0, -5),
-                            headerContent: null // Varsayılan başlığı gizle (Google Maps v3.53+)
+                            headerContent: null
                         }}
                     >
-                        {/* İçerik Tasarımı */}
                         <div className="flex flex-col items-center">
-                            {/* Ana Etiket (Hat No ve İkon) */}
                             <div 
                                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-md shadow-md mb-1 border border-white/20"
                                 style={{ 
@@ -310,7 +303,6 @@ const FullScreenItineraryMap = ({
                                 <span className="font-bold text-sm tracking-wide">{badge.label}</span>
                             </div>
                             
-                            {/* Alt Bilgi (Yön ve Süre) - Küçük puntolarla */}
                             <div className="bg-white dark:bg-slate-800 px-2 py-0.5 rounded shadow-sm border border-gray-100 dark:border-gray-700">
                                 {badge.headsign && (
                                     <div className="text-[10px] text-gray-600 dark:text-gray-300 font-medium max-w-[120px] truncate text-center leading-tight">
@@ -347,20 +339,19 @@ const FullScreenItineraryMap = ({
             />
         )}
 
-        {/* DURAK MARKERLARI */}
         {stops.map((stop, index) => (
           <Marker
             key={stop.id}
             position={stop.position}
             icon={getMarkerIcon(index, selectedStopId === stop.id)}
             title={stop.name}
-            zIndex={100} // Markerlar her zaman en üstte
+            zIndex={100} 
             onClick={() => { if (!selectionMode) onStopClick(stop.original || stop); }}
           />
         ))}
       </GoogleMap>
 
-      {/* Loading ve Empty State Overlay'leri (Aynen korundu) */}
+      {/* Loading ve Empty State Overlay'leri */}
       <AnimatePresence>
         {isLoading && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/50 backdrop-blur-sm">
