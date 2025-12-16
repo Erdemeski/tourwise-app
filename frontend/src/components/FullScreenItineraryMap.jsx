@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
-import { Loader2, MapPin, AlertCircle, Sparkles, Wand2 } from 'lucide-react';
+import { Loader2, AlertCircle, Sparkles, Wand2, MapPin } from 'lucide-react'; // MapPin eklendi
 import { useSelector } from 'react-redux';
 import { Highlighter } from './ui/highlighter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,6 +25,7 @@ const extractStops = (days = []) => {
           location: stop?.location,
           position: { lat, lng },
           dayNumber: day?.dayNumber ?? idx + 1,
+          original: stop // Orijinal veriyi sakla (tıklama için)
         };
       })
       .filter(Boolean);
@@ -48,7 +49,10 @@ const FullScreenItineraryMap = ({
   isLoading = false,
   loadingMessage = "Generating Your Itinerary",
   loadingDescription = "Our AI is crafting the perfect trip for you...",
-  className = ''
+  className = '',
+  // --- BİZİM EKLEDİKLERİMİZ ---
+  onMapClick, 
+  selectionMode = false 
 }) => {
   const theme = useSelector((state) => state.theme.theme);
   const mapKey = `map-${theme}`;
@@ -61,6 +65,7 @@ const FullScreenItineraryMap = ({
   const [directions, setDirections] = useState(null);
   const [map, setMap] = useState(null);
 
+  // Map Options - selectionMode entegrasyonu yapıldı
   const mapOptions = useMemo(() => ({
     disableDefaultUI: false,
     zoomControl: true,
@@ -72,6 +77,9 @@ const FullScreenItineraryMap = ({
     fullscreenControl: false,
     gestureHandling: 'greedy',
     colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
+    // Seçim modundaysa imleci değiştir, değilse normal bırak
+    draggableCursor: selectionMode ? 'crosshair' : 'grab',
+    clickableIcons: false, // POI tıklamalarını kapat
     styles: [
       {
         featureType: 'poi',
@@ -83,7 +91,7 @@ const FullScreenItineraryMap = ({
         stylers: [{ visibility: 'off' }],
       },
     ],
-  }), [theme]);
+  }), [theme, selectionMode]); // selectionMode değişince options güncellensin
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || '',
@@ -146,6 +154,15 @@ const FullScreenItineraryMap = ({
     setMap(null);
   }, []);
 
+  // --- BİZİM EKLEDİĞİMİZ TIKLAMA FONKSİYONU ---
+  const handleMapClick = useCallback((e) => {
+    if (onMapClick && e.latLng) {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        onMapClick({ lat, lng });
+    }
+  }, [onMapClick]);
+
   // Custom marker icon using SVG
   const getMarkerIcon = useCallback((index, isSelected) => {
     if (!window.google) return undefined;
@@ -168,31 +185,9 @@ const FullScreenItineraryMap = ({
   // Update map options when theme changes
   useEffect(() => {
     if (map && window.google) {
-      map.setOptions({
-        disableDefaultUI: false,
-        zoomControl: true,
-        zoomControlOptions: {
-          position: window.google.maps.ControlPosition.RIGHT_CENTER,
-        },
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-        gestureHandling: 'greedy',
-        colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
-        styles: [
-          {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }],
-          },
-          {
-            featureType: 'poi.business',
-            stylers: [{ visibility: 'off' }],
-          },
-        ],
-      });
+      map.setOptions(mapOptions);
     }
-  }, [map, theme]);
+  }, [map, mapOptions]);
 
   if (!apiKey) {
     return (
@@ -251,8 +246,9 @@ const FullScreenItineraryMap = ({
         onLoad={onLoad}
         onUnmount={onUnmount}
         options={mapOptions}
+        onClick={handleMapClick} // <-- Tıklama Olayı Eklendi
       >
-        {directions && (
+        {directions && !selectionMode && ( // Seçim modundaysa rota çizgisini gizleyebilirsin (opsiyonel)
           <DirectionsRenderer
             directions={directions}
             options={{
@@ -272,7 +268,10 @@ const FullScreenItineraryMap = ({
             position={stop.position}
             icon={getMarkerIcon(index, selectedStopId === stop.id)}
             title={stop.name}
-            onClick={() => onStopClick(stop)}
+            onClick={() => {
+                // Seçim modundaysak marker tıklamasını engelle veya farklı davran
+                if (!selectionMode) onStopClick(stop.original || stop);
+            }}
           />
         ))}
       </GoogleMap>
