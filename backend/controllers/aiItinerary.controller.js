@@ -7,10 +7,9 @@ import {
     updateAiItinerarySchema
 } from "../utils/aiValidators.js";
 
-// SENİN EKLEDİĞİN IMPORTLAR (KORUNDU)
 import { requestItineraryPlan, requestPoiAnswer, analyzeItineraryBudget, requestItineraryModification } from "../services/llm.service.js";
-import { searchPlace, getPlacePhotoUrl } from "../services/places.service.js";
-import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
+import { searchPlace } from "../services/places.service.js";
+import { mapDaysToWaypointList } from "../utils/itineraryMapper.js"; 
 
 const sanitizeArray = (value) => {
     if (!value) return [];
@@ -40,7 +39,6 @@ const enrichItineraryWithPlaces = async (plan) => {
     console.log(">>> ENRICHMENT PROCESS STARTED <<<");
     
     if (!plan.days || !Array.isArray(plan.days)) {
-        console.log("Plan structure invalid or no days found.");
         return plan;
     }
 
@@ -48,17 +46,12 @@ const enrichItineraryWithPlaces = async (plan) => {
         if (!day.stops || !Array.isArray(day.stops)) return day;
 
         const stopsPromises = day.stops.map(async (stop) => {
-            if (stop.externalId) {
-                return stop;
-            }
+            if (stop.externalId) return stop;
 
             const cityContext = stop.location?.city || '';
-            console.log(`API Call: Searching place for '${stop.name}' in '${cityContext}'...`);
-            
             const placeData = await searchPlace(stop.name, cityContext);
 
             if (placeData) {
-                console.log(`✅ Found: ${placeData.name} (ID: ${placeData.placeId})`);
                 return {
                     ...stop,
                     name: placeData.name,
@@ -71,8 +64,6 @@ const enrichItineraryWithPlaces = async (plan) => {
                     externalId: placeData.placeId,
                     rating: placeData.rating,
                 };
-            } else {
-                console.log(`❌ Not Found: ${stop.name}`);
             }
             return stop;
         });
@@ -82,7 +73,6 @@ const enrichItineraryWithPlaces = async (plan) => {
     });
 
     const enrichedDays = await Promise.all(daysPromises);
-    console.log(">>> ENRICHMENT PROCESS FINISHED <<<");
     return { ...plan, days: enrichedDays };
 };
 
@@ -94,23 +84,17 @@ export const generateAiItinerary = async (req, res, next) => {
 
         const { prompt, preferences } = generationSchema.parse(req.body);
         
-        console.log("1. Requesting plan from LLM...");
         const plan = await requestItineraryPlan(prompt, preferences);
-        
-        console.log("2. Enriching plan with Google Places data...");
         const enrichedPlan = await enrichItineraryWithPlaces(plan);
-
-        console.log("3. Analyzing budget...");
         const budgetAnalysis = await analyzeItineraryBudget(enrichedPlan);
 
-        console.log("4. Saving itinerary to database...");
         const normalizedPlan = aiItinerarySchema.parse({
             ...enrichedPlan,
             budget: budgetAnalysis,
         });
 
         const days = Array.isArray(normalizedPlan.days) ? normalizedPlan.days : [];
-        const waypointList = mapDaysToWaypointList(days);
+        const waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(days) : [];
 
         const itinerary = new Itinerary({
             userId: req.user.id,
@@ -129,7 +113,6 @@ export const generateAiItinerary = async (req, res, next) => {
         });
 
         const saved = await itinerary.save();
-        console.log(`4. Itinerary saved successfully (ID: ${saved._id})`);
         res.status(201).json(saved);
     } catch (error) {
         console.error("Error in generateAiItinerary:", error);
@@ -139,18 +122,14 @@ export const generateAiItinerary = async (req, res, next) => {
 
 export const listAiItineraries = async (req, res, next) => {
     try {
-        if (!req.user) {
-            return next(errorHandler(401, "Authentication required"));
-        }
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
 
         const view = req.query.view;
         const isAdmin = req.user?.isAdmin === true;
-        const projection =
-            view === "compact"
+        const projection = view === "compact"
                 ? "title summary tags updatedAt createdAt status durationDays prompt budget publishedRouteId source userId"
                 : undefined;
 
-        // Admin can see all AI itineraries, regular users only see their own
         const query = { source: "ai" };
         if (!isAdmin) {
             query.userId = req.user.id;
@@ -168,9 +147,7 @@ export const listAiItineraries = async (req, res, next) => {
 
 export const getAiItinerary = async (req, res, next) => {
     try {
-        if (!req.user) {
-            return next(errorHandler(401, "Authentication required"));
-        }
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
 
         const itinerary = await Itinerary.findById(req.params.id);
         assertOwnership(itinerary, req.user);
@@ -183,9 +160,7 @@ export const getAiItinerary = async (req, res, next) => {
 
 export const updateAiItinerary = async (req, res, next) => {
     try {
-        if (!req.user) {
-            return next(errorHandler(401, "Authentication required"));
-        }
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
 
         const itinerary = await Itinerary.findById(req.params.id);
         assertOwnership(itinerary, req.user);
@@ -198,7 +173,7 @@ export const updateAiItinerary = async (req, res, next) => {
         }
 
         if ("days" in updates && Array.isArray(updates.days)) {
-            updates.waypointList = mapDaysToWaypointList(updates.days);
+            updates.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(updates.days) : [];
         }
 
         Object.assign(itinerary, updates, { updatedAt: new Date() });
@@ -211,9 +186,7 @@ export const updateAiItinerary = async (req, res, next) => {
 
 export const deleteAiItinerary = async (req, res, next) => {
     try {
-        if (!req.user) {
-            return next(errorHandler(401, "Authentication required"));
-        }
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
 
         const itinerary = await Itinerary.findById(req.params.id);
         assertOwnership(itinerary, req.user);
@@ -227,9 +200,7 @@ export const deleteAiItinerary = async (req, res, next) => {
 
 export const askItineraryChatbot = async (req, res, next) => {
     try {
-        if (!req.user) {
-            return next(errorHandler(401, "Authentication required"));
-        }
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
 
         const payload = chatbotSchema.parse(req.body);
         const response = await requestPoiAnswer(payload.question, {
@@ -241,8 +212,6 @@ export const askItineraryChatbot = async (req, res, next) => {
         next(error);
     }
 };
-
-// === YENİ EKLENEN ÖZELLİKLER ===
 
 export const reorderItineraryStops = async (req, res, next) => {
     try {
@@ -265,7 +234,7 @@ export const reorderItineraryStops = async (req, res, next) => {
         day.stops.splice(newIndex, 0, movedItem);
 
         itinerary.markModified('days');
-        itinerary.waypointList = mapDaysToWaypointList(itinerary.days);
+        itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(itinerary.days) : [];
 
         const saved = await itinerary.save();
         res.json(saved);
@@ -302,7 +271,7 @@ export const moveStopBetweenDays = async (req, res, next) => {
         targetDay.stops.splice(safeToIndex, 0, movedItem);
 
         itinerary.markModified('days');
-        itinerary.waypointList = mapDaysToWaypointList(itinerary.days);
+        itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(itinerary.days) : [];
         
         const saved = await itinerary.save();
         res.json(saved);
@@ -347,7 +316,6 @@ export const copyItineraryToUser = async (req, res, next) => {
     }
 };
 
-// Paylaşma (Status Toggle) - Deprecated: Itineraries don't have shared status anymore
 export const shareItinerary = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -356,7 +324,6 @@ export const shareItinerary = async (req, res, next) => {
         const itinerary = await Itinerary.findById(id);
         assertOwnership(itinerary, req.user);
 
-        // Mark as finished (ready to be published as route)
         itinerary.status = 'finished';
 
         const saved = await itinerary.save();
@@ -366,7 +333,6 @@ export const shareItinerary = async (req, res, next) => {
     }
 };
 
-// SENİN EKLEDİĞİN FONKSİYON (Korundu)
 export const modifyAiItinerary = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -383,7 +349,7 @@ export const modifyAiItinerary = async (req, res, next) => {
         const enrichedPlan = await enrichItineraryWithPlaces(modifiedPlanData);
 
         itinerary.days = enrichedPlan.days;
-        itinerary.waypointList = mapDaysToWaypointList(enrichedPlan.days);
+        itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(enrichedPlan.days) : [];
         
         if (enrichedPlan.summary) itinerary.summary = enrichedPlan.summary;
 
@@ -393,6 +359,109 @@ export const modifyAiItinerary = async (req, res, next) => {
         const saved = await itinerary.save();
         
         console.log("Itinerary modified successfully");
+        res.json(saved);
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const addItineraryStop = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { dayNumber, placeName, notes, location } = req.body; 
+
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
+        
+        if (!placeName && !location) return next(errorHandler(400, "Place name or location is required"));
+
+        const itinerary = await Itinerary.findById(id);
+        assertOwnership(itinerary, req.user);
+
+        const day = itinerary.days.find(d => d.dayNumber === Number(dayNumber));
+        if (!day) return next(errorHandler(404, "Day not found"));
+
+        let structuredLocation = { city: "" }; 
+
+        if (location && typeof location.lat === 'number') {
+            structuredLocation = {
+                geo: {
+                    lat: location.lat,
+                    lng: location.lng
+                },
+                address: location.address || "Selected via Map",
+                city: "" 
+            };
+        }
+
+        let newStopData = {
+            name: placeName || "Pinned Location",
+            description: notes || "Manually added stop.",
+            location: structuredLocation
+        };
+
+        if (!location) {
+            const cityContext = day.stops?.[0]?.location?.city || itinerary.preferences?.startingCity || "";
+            const placeData = await searchPlace(placeName, cityContext);
+            
+            if (placeData) {
+                newStopData = {
+                    ...newStopData,
+                    name: placeData.name,
+                    location: {
+                        address: placeData.address,
+                        geo: placeData.location,
+                        city: cityContext
+                    },
+                    externalId: placeData.placeId,
+                    rating: placeData.rating
+                };
+            } else {
+                newStopData.location.city = cityContext;
+            }
+        }
+
+        day.stops.push(newStopData);
+
+        itinerary.markModified('days');
+        itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(itinerary.days) : [];
+        
+        const saved = await itinerary.save();
+        res.status(201).json(saved);
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const removeItineraryStop = async (req, res, next) => {
+    try {
+        const { id, stopId } = req.params;
+        const { dayNumber } = req.body; 
+
+        if (!req.user) return next(errorHandler(401, "Authentication required"));
+
+        const itinerary = await Itinerary.findById(id);
+        assertOwnership(itinerary, req.user);
+
+        const day = itinerary.days.find(d => d.dayNumber === Number(dayNumber));
+        if (!day) return next(errorHandler(404, "Day not found"));
+
+        const initialLength = day.stops.length;
+
+        day.stops = day.stops.filter(stop => {
+            const currentId = stop._id ? stop._id.toString() : stop.id;
+            return currentId !== stopId;
+        });
+
+        if (day.stops.length === initialLength) {
+            return next(errorHandler(404, "Stop not found or already deleted"));
+        }
+
+        itinerary.markModified('days');
+        itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(itinerary.days) : [];
+
+        const saved = await itinerary.save();
         res.json(saved);
 
     } catch (error) {

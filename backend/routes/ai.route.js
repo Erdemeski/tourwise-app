@@ -1,38 +1,45 @@
-import express from "express";
-import { verifyToken } from "../utils/verifyUser.js";
+import express from 'express';
+import { verifyToken } from '../utils/verifyUser.js'; 
 import {
-    askItineraryChatbot,
-    deleteAiItinerary,
     generateAiItinerary,
-    getAiItinerary,
     listAiItineraries,
+    getAiItinerary,
     updateAiItinerary,
+    deleteAiItinerary,
+    modifyAiItinerary,
+    askItineraryChatbot,
     reorderItineraryStops,
     moveStopBetweenDays,
     copyItineraryToUser,
     shareItinerary,
-    modifyAiItinerary 
-} from "../controllers/aiItinerary.controller.js";
+    addItineraryStop,    
+    removeItineraryStop  
+} from '../controllers/aiItinerary.controller.js';
 
 const router = express.Router();
 
-router.post("/itineraries/generate", verifyToken, generateAiItinerary);
-router.get("/itineraries", verifyToken, listAiItineraries);
-router.get("/itineraries/:id", verifyToken, getAiItinerary);
-router.patch("/itineraries/:id", verifyToken, updateAiItinerary);
-router.delete("/itineraries/:id", verifyToken, deleteAiItinerary);
-router.patch("/itineraries/:id/reorder", verifyToken, reorderItineraryStops);
-router.patch("/itineraries/:id/move", verifyToken, moveStopBetweenDays);
-router.post("/itineraries/:id/copy", verifyToken, copyItineraryToUser);
-router.post("/itineraries/:id/share", verifyToken, shareItinerary);
-
-router.post("/chatbot", verifyToken, askItineraryChatbot);
-
+// --- GENEL ROTALAR ---
+router.post('/itineraries/generate', verifyToken, generateAiItinerary);
+router.get('/itineraries', verifyToken, listAiItineraries);
+router.post('/chatbot', verifyToken, askItineraryChatbot);
+router.get('/itineraries/:id', verifyToken, getAiItinerary);
+router.patch('/itineraries/:id', verifyToken, updateAiItinerary);
+router.delete('/itineraries/:id', verifyToken, deleteAiItinerary);
 router.post('/itineraries/:id/modify', verifyToken, modifyAiItinerary);
+router.post('/itineraries/:id/stops', verifyToken, addItineraryStop);
+router.delete('/itineraries/:id/stops/:stopId', verifyToken, removeItineraryStop);
+router.patch('/itineraries/:id/reorder', verifyToken, reorderItineraryStops);
+router.patch('/itineraries/:id/move', verifyToken, moveStopBetweenDays);
+router.post('/itineraries/:id/copy', verifyToken, copyItineraryToUser);
+router.patch('/itineraries/:id/share', verifyToken, shareItinerary); // Status update için
 
+<<<<<<< HEAD
 export default router;
 
 
 
 
 
+=======
+export default router;
+>>>>>>> a49cf5c38bb841ef05d47a5e4e5743cad75d9a8c

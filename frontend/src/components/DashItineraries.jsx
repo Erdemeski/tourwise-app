@@ -27,7 +27,6 @@ import {
     X,
     Navigation,
     Star,
-    ExternalLink,
     History,
     Ticket,
     Camera,
@@ -146,6 +145,7 @@ export default function DashItineraries() {
     const [modifyOpen, setModifyOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [locationDetailOpen, setLocationDetailOpen] = useState(false);
+    const [addStopOpen, setAddStopOpen] = useState(false);
 
     // Form states
     const [generatorForm, setGeneratorForm] = useState({
@@ -157,13 +157,19 @@ export default function DashItineraries() {
         exclude: '',
     });
     const [modifyPrompt, setModifyPrompt] = useState('');
+    const [addStopForm, setAddStopForm] = useState({ dayNumber: 1, placeName: '', notes: '' });
     const [editDraft, setEditDraft] = useState(null);
+
+    // Map Selection States
+    const [isSelectingLocation, setIsSelectingLocation] = useState(false);
+    const [tempLocation, setTempLocation] = useState(null);
 
     // Loading states
     const [generatorLoading, setGeneratorLoading] = useState(false);
     const [modifyLoading, setModifyLoading] = useState(false);
     const [saveLoading, setSaveLoading] = useState(false);
     const [finishLoading, setFinishLoading] = useState(false);
+    const [addStopLoading, setAddStopLoading] = useState(false);
 
     // Error states
     const [generatorError, setGeneratorError] = useState(null);
@@ -249,7 +255,6 @@ export default function DashItineraries() {
         try {
             setGeneratorLoading(true);
             setGeneratorError(null);
-            // Close dialog immediately when generation starts
             setGeneratorOpen(false);
 
             const payload = {
@@ -285,7 +290,6 @@ export default function DashItineraries() {
             });
         } catch (error) {
             setGeneratorError(error.message);
-            // Reopen dialog on error so user can see the error message
             setGeneratorOpen(true);
         } finally {
             setGeneratorLoading(false);
@@ -350,7 +354,7 @@ export default function DashItineraries() {
         }
     };
 
-    // Delete itinerary
+    // Delete itinerary (Entire plan)
     const handleDelete = async () => {
         if (!selectedId) return;
         try {
@@ -379,7 +383,6 @@ export default function DashItineraries() {
 
         try {
             setModifyLoading(true);
-            // Close dialog immediately when refinement starts
             setModifyOpen(false);
             setDetailDrawerOpen(false);
 
@@ -401,11 +404,136 @@ export default function DashItineraries() {
             setModifyPrompt('');
         } catch (error) {
             setDetailError(error.message);
-            // Reopen dialog on error so user can see the error message
             setModifyOpen(true);
         } finally {
             setModifyLoading(false);
         }
+    };
+
+    // --- MANUEL EKLEME VE SİLME FONKSİYONLARI ---
+
+    // Haritadan seçim başlatma
+    const startLocationSelection = () => {
+        setAddStopOpen(false); // Modalı geçici kapat
+        setIsSelectingLocation(true); // Seçim modunu aç
+        
+        // Diğer drawer'ları kapat ki harita görünsün
+        setListDrawerOpen(false);
+        setDetailDrawerOpen(false);
+        setChatDrawerOpen(false);
+    };
+
+    // Harita tıklamasını yakalama
+    const handleMapClick = (coords) => {
+        if (!isSelectingLocation) return;
+
+        setTempLocation(coords);
+
+        // Modalı geri açtığımızda isim kısmını 'Seçilen Konum' olarak doldur,
+        // ama kullanıcı değiştirebilsin diye editable bırak.
+        setAddStopForm(prev => ({
+            ...prev,
+            placeName: prev.placeName || "Selected Location" 
+        }));
+
+        setIsSelectingLocation(false);
+        setAddStopOpen(true); // Modalı geri aç
+    };
+
+    // Seçim modunu iptal etme
+    const cancelLocationSelection = () => {
+        setIsSelectingLocation(false);
+        setAddStopOpen(true); // Modalı geri getir
+    };
+
+    // 1. Manuel Durak Ekleme
+    const handleAddStop = async () => {
+        if ((!addStopForm.placeName.trim() && !tempLocation) || !selected?._id) return;
+
+        try {
+            setAddStopLoading(true);
+
+            const payload = {
+                dayNumber: addStopForm.dayNumber,
+                placeName: addStopForm.placeName,
+                notes: addStopForm.notes,
+                location: tempLocation // Haritadan gelen koordinat
+            };
+
+            const res = await fetch(`/api/ai/itineraries/${selected._id}/stops`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to add stop');
+
+            setSelected(data);
+            setItineraries((prev) =>
+                prev.map((item) => (item._id === data._id ? { ...item, ...data } : item))
+            );
+
+            // Başarılıysa formu sıfırla
+            setAddStopForm({ dayNumber: 1, placeName: '', notes: '' });
+            setTempLocation(null);
+            setAddStopOpen(false);
+
+        } catch (error) {
+            setDetailError(error.message);
+        } finally {
+            setAddStopLoading(false);
+        }
+    };
+
+    // 2. Manuel Durak Silme (GÜVENLİ VERSİYON)
+    const handleRemoveStop = async (dayNumber, stopId) => {
+        if (!stopId || stopId === 'undefined') {
+            console.error("ID hatası: stopId yok.");
+            return;
+        }
+
+        if (!selected?._id) return;
+
+        // Optimistik Güncelleme
+        const previousSelected = JSON.parse(JSON.stringify(selected));
+        const newSelected = JSON.parse(JSON.stringify(selected));
+        const dayIndex = newSelected.days.findIndex(d => d.dayNumber === dayNumber);
+
+        if (dayIndex !== -1) {
+            newSelected.days[dayIndex].stops = newSelected.days[dayIndex].stops.filter(
+                s => (s._id || s.id) !== stopId
+            );
+            setSelected(newSelected);
+        }
+
+        try {
+            const res = await fetch(`/api/ai/itineraries/${selected._id}/stops/${stopId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ dayNumber }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to delete stop');
+            }
+
+            const data = await res.json();
+            setSelected(data);
+
+        } catch (error) {
+            console.error("Silme hatası:", error);
+            setSelected(previousSelected); // Hata olursa geri al
+            setDetailError(error.message);
+        }
+    };
+
+    const openAddStopModal = (dayNum) => {
+        setAddStopForm({ dayNumber: dayNum, placeName: '', notes: '' });
+        setAddStopOpen(true);
     };
 
     // Send chat message
@@ -444,7 +572,7 @@ export default function DashItineraries() {
         }
     };
 
-    // Drag and drop
+    // Drag and drop logic
     const onDragEnd = async (result) => {
         const { source, destination } = result;
         if (!destination) return;
@@ -508,7 +636,6 @@ export default function DashItineraries() {
         return selected.days.reduce((acc, day) => acc + (day?.stops?.length || 0), 0);
     }, [selected]);
 
-    // Global stop index offsets per day (for cumulative numbering)
     const stopIndexOffsets = useMemo(() => {
         const offsets = {};
         let running = 0;
@@ -519,14 +646,12 @@ export default function DashItineraries() {
         return offsets;
     }, [selected?.days]);
 
-    // Handle map marker click - show location details first
     const handleStopClick = (stop) => {
         setSelectedStopId(stop.id);
         setSelectedStop(stop);
         setLocationDetailOpen(true);
     };
 
-    // Open chat for selected stop
     const openChatForStop = () => {
         setLocationDetailOpen(false);
         setChatMessages([
@@ -545,50 +670,67 @@ export default function DashItineraries() {
 
     return (
         <div className="fixed inset-0 top-[65px] z-10">
-            {/* Full Screen Map - Always visible */}
+            {/* Full Screen Map */}
             <div className="absolute inset-0 w-full h-full">
                 <FullScreenItineraryMap
                     days={selected?.days || []}
                     onStopClick={handleStopClick}
                     selectedStopId={selectedStopId}
                     isLoading={generatorLoading || modifyLoading}
+                    onMapClick={handleMapClick}
+                    selectionMode={isSelectingLocation}
                     loadingMessage={modifyLoading ? "Refining Your Itinerary" : "Generating Your Itinerary"}
                     loadingDescription={modifyLoading ? "Our AI is refining your trip based on your preferences..." : "Our AI is crafting the perfect trip for you..."}
                     className="w-full h-full"
                 />
             </div>
 
-            {/* Floating Action Buttons */}
-            <div className="absolute top-4 left-4 z-30 flex gap-2">
-                <ShinyButton
-                    onClick={() => setListDrawerOpen(true)}
-                    className="px-3 shadow-lg bg-white dark:bg-[rgb(22,26,29)] text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-[rgb(32,38,43)] border border-slate-200 dark:border-[rgb(32,38,43)]"
+            {/* SEÇİM MODU BANNER'I (YENİ EKLENDİ) */}
+            {isSelectingLocation && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -50 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-4 bg-white dark:bg-slate-800 px-6 py-3 rounded-full shadow-xl border border-violet-200 dark:border-violet-800"
                 >
-                    <div className="flex items-center justify-center">
-                        <List className="h-4 w-4 mr-2" />
-                        <span className="text-sm">My Itineraries</span>
+                    <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 font-medium animate-pulse">
+                        <MapPin className="h-5 w-5" />
+                        Click on the map to select location
                     </div>
-                </ShinyButton>
-                <RainbowButton className='h-full'>
-                    <div onClick={() => setGeneratorOpen(true)} className="flex items-center justify-center">
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Generate New
-                    </div>
-                </RainbowButton>
-                {/*                 <Button
-                    onClick={() => setGeneratorOpen(true)}
-                    className="shadow-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
-                    size="sm"
-                >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate New
-                </Button>
- */}
-            </div>
+                    <Button 
+                        size="sm" 
+                        variant="secondary"
+                        onClick={cancelLocationSelection}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    >
+                        Cancel
+                    </Button>
+                </motion.div>
+            )}
 
-            {/* Quick Stats Card - Centered at bottom */}
+            {/* Floating Action Buttons */}
+            {!isSelectingLocation && (
+                <div className="absolute top-4 left-4 z-30 flex gap-2">
+                    <ShinyButton
+                        onClick={() => setListDrawerOpen(true)}
+                        className="px-3 shadow-lg bg-white dark:bg-[rgb(22,26,29)] text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-[rgb(32,38,43)] border border-slate-200 dark:border-[rgb(32,38,43)]"
+                    >
+                        <div className="flex items-center justify-center">
+                            <List className="h-4 w-4 mr-2" />
+                            <span className="text-sm">My Itineraries</span>
+                        </div>
+                    </ShinyButton>
+                    <RainbowButton className='h-full'>
+                        <div onClick={() => setGeneratorOpen(true)} className="flex items-center justify-center">
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate New
+                        </div>
+                    </RainbowButton>
+                </div>
+            )}
+
+            {/* Quick Stats Card */}
             <AnimatePresence>
-                {selected && !detailDrawerOpen && !listDrawerOpen && !chatDrawerOpen && (
+                {selected && !detailDrawerOpen && !listDrawerOpen && !chatDrawerOpen && !isSelectingLocation && (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -772,16 +914,7 @@ export default function DashItineraries() {
                                             title="Refine with AI">
                                             <Wand2 className="h-4 w-4" />
                                         </RainbowButton>
-                                        {/*                                         <Button
-                                            variant="outline"
-                                            size="icon"
-                                            onClick={() => setModifyOpen(true)}
-                                            title="Refine with AI"
-                                            className="dark:border-gray-500"
-                                        >
-                                            <Wand2 className="h-4 w-4" />
-                                        </Button>
- */}                                        <Button
+                                        <Button
                                             variant="outline"
                                             size="icon"
                                             onClick={() => setDeleteOpen(true)}
@@ -970,7 +1103,7 @@ export default function DashItineraries() {
                                                                                 : 'border-slate-200 dark:border-gray-500'
                                                                                 }`}
                                                                         >
-                                                                            {/* Drag Handle - Only this triggers drag */}
+                                                                            {/* Drag Handle */}
                                                                             <div
                                                                                 {...provided.dragHandleProps}
                                                                                 className="p-2 -m-1 rounded-md text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-grab active:cursor-grabbing touch-none"
@@ -996,22 +1129,52 @@ export default function DashItineraries() {
                                                                                     </p>
                                                                                 )}
                                                                             </div>
-                                                                            <Button
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="shrink-0 h-8 w-8"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleStopClick(stop);
-                                                                                }}
-                                                                            >
-                                                                                <MessageCircleWarning className="h-4 w-4" />
-                                                                            </Button>
+
+                                                                            {/* Action Buttons */}
+                                                                            <div className="flex gap-1">
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="shrink-0 h-8 w-8"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleStopClick(stop);
+                                                                                    }}
+                                                                                >
+                                                                                    <MessageCircleWarning className="h-4 w-4" />
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="icon"
+                                                                                    className="shrink-0 h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        // GÜVENLİ ID KONTROLÜ
+                                                                                        const stopId = stop._id || stop.id;
+                                                                                        if (!stopId) {
+                                                                                            console.error("ID Hatası:", stop);
+                                                                                            return;
+                                                                                        }
+                                                                                        handleRemoveStop(day.dayNumber, stopId);
+                                                                                    }}
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                </Button>
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </Draggable>
                                                             ))}
                                                             {provided.placeholder}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="w-full border border-dashed border-slate-300 dark:border-gray-600 text-slate-500 hover:text-violet-600 hover:border-violet-300 dark:hover:border-violet-700"
+                                                                onClick={() => openAddStopModal(day.dayNumber)}
+                                                            >
+                                                                <Plus className="h-4 w-4 mr-2" />
+                                                                Add Place
+                                                            </Button>
                                                         </div>
                                                     )}
                                                 </Droppable>
@@ -1073,18 +1236,6 @@ export default function DashItineraries() {
                             </p>
                         )}
 
-                        {/* Action Buttons */}
-                        {/*                         <div className="grid grid-cols-2 gap-3">
-                            <Button className="w-full bg-blue-500 hover:bg-blue-600">
-                                <Navigation className="h-4 w-4 mr-2" />
-                                Directions
-                            </Button>
-                            <Button variant="outline" className="w-full">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add to trip
-                            </Button>
-                        </div>
- */}
                         <div className="flex items-center justify-center gap-2">
                             <Link to={`https://www.google.com/maps/search/?api=1&query=${selectedStop?.name || selectedStop?.location?.address}`} target="_blank">
                                 <Button variant="outline" className="w-full dark:border-gray-500">
@@ -1373,24 +1524,70 @@ export default function DashItineraries() {
                                 </>
                             )}
                         </RainbowButton>
-                        {/*                         <Button
-                            onClick={handleModifyItinerary}
-                            disabled={modifyLoading || !modifyPrompt.trim()}
-                            className="bg-gradient-to-r from-violet-600 to-indigo-600"
-                        >
-                            {modifyLoading ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Refining...
-                                </>
-                            ) : (
-                                <>
-                                    <Wand2 className="h-4 w-4 mr-2" />
-                                    Refine Plan
-                                </>
-                            )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Stop Modal (EN SON DÜZELTİLMİŞ HALİ) */}
+            <Dialog open={addStopOpen} onOpenChange={(open) => {
+                // Seçim modundaysak ve kullanıcı modal dışına basarsa kapatma, ama çarpıya basarsa kapat.
+                if (!open && isSelectingLocation) return;
+                setAddStopOpen(open);
+                if (!open) setTempLocation(null);
+            }}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Add Stop to Day {addStopForm.dayNumber}</DialogTitle>
+                        <DialogDescription>
+                            Search for a place or pick from the map.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                                <Label htmlFor="placeName">Place Name</Label>
+                                <Input
+                                    id="placeName"
+                                    placeholder="e.g. Blue Mosque, Starbucks..."
+                                    value={addStopForm.placeName}
+                                    onChange={(e) => setAddStopForm(prev => ({ ...prev, placeName: e.target.value }))}
+                                    autoFocus={!tempLocation}
+                                />
+                            </div>
+                            <Button
+                                variant={tempLocation ? "default" : "outline"}
+                                onClick={startLocationSelection}
+                                className={`mb-0.5 whitespace-nowrap ${tempLocation ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+                            >
+                                <MapPin className={`h-4 w-4 mr-2 ${tempLocation ? 'text-white' : ''}`} />
+                                {tempLocation ? "Selected" : "Pick on Map"}
+                            </Button>
+                        </div>
+
+                        {tempLocation && (
+                            <div className="p-2 rounded bg-green-50 text-green-700 text-xs flex items-center gap-2 border border-green-200">
+                                <CheckCircle2 className="h-4 w-4" />
+                                <span>Location coordinates captured! Add a name above.</span>
+                            </div>
+                        )}
+
+                        <div>
+                            <Label htmlFor="stopNotes">Notes (Optional)</Label>
+                            <Textarea
+                                id="stopNotes"
+                                rows={2}
+                                placeholder="Lunch break, quick photo stop..."
+                                value={addStopForm.notes}
+                                onChange={(e) => setAddStopForm(prev => ({ ...prev, notes: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddStopOpen(false)}>Cancel</Button>
+                        <Button onClick={handleAddStop} disabled={addStopLoading || (!addStopForm.placeName.trim() && !tempLocation)}>
+                            {addStopLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Add Stop
                         </Button>
- */}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
