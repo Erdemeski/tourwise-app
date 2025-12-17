@@ -1,12 +1,14 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
-import { Loader2, MapPin, AlertCircle, Sparkles, Wand2 } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
+import { Loader2, AlertCircle, MapPin, Car, Bus, Footprints } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { Highlighter } from './ui/highlighter';
 import { motion, AnimatePresence } from 'motion/react';
+import { Button } from './ui/button';
 
 const defaultCenter = { lat: 39.0, lng: 35.0 }; // Turkey center
 
+// Durak verisini temizle
 const extractStops = (days = []) => {
   if (!Array.isArray(days)) return [];
   return days.flatMap((day) => {
@@ -15,31 +17,19 @@ const extractStops = (days = []) => {
       .map((stop, idx) => {
         const lat = stop?.location?.geo?.lat ?? stop?.latitude ?? null;
         const lng = stop?.location?.geo?.lng ?? stop?.longitude ?? null;
-        if (typeof lat !== 'number' || typeof lng !== 'number') {
-          return null;
-        }
+        if (typeof lat !== 'number' || typeof lng !== 'number') return null;
         return {
           id: stop?.id || stop?._id || `${day?.dayNumber ?? 0}-${idx}`,
           name: stop?.name ?? `Stop ${idx + 1}`,
-          description: stop?.description,
-          location: stop?.location,
           position: { lat, lng },
-          dayNumber: day?.dayNumber ?? idx + 1,
+          original: stop 
         };
       })
       .filter(Boolean);
   });
 };
 
-const mapContainerStyle = {
-  width: '100%',
-  height: '100%',
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-};
+const mapContainerStyle = { width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 };
 
 const FullScreenItineraryMap = ({
   days = [],
@@ -48,111 +38,189 @@ const FullScreenItineraryMap = ({
   isLoading = false,
   loadingMessage = "Generating Your Itinerary",
   loadingDescription = "Our AI is crafting the perfect trip for you...",
-  className = ''
+  className = '',
+  onMapClick, 
+  selectionMode = false 
 }) => {
   const theme = useSelector((state) => state.theme.theme);
-  const mapKey = `map-${theme}`;
-  const apiKey =
-    import.meta.env?.VITE_GOOGLE_MAPS_API_KEY ||
-    import.meta.env?.GOOGLE_MAPS_API_KEY ||
-    '';
+  const apiKey = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 
   const stops = useMemo(() => extractStops(days), [days]);
-  const [directions, setDirections] = useState(null);
+  
+  const [singleDirection, setSingleDirection] = useState(null);
+  const [transitDirections, setTransitDirections] = useState([]); // Parçalı rotalar
+  const [transitBadges, setTransitBadges] = useState([]); // Sadece Hat İsimleri
+
   const [map, setMap] = useState(null);
+  const [travelMode, setTravelMode] = useState('DRIVING'); // Varsayılan DRIVING (En ucuz)
+
+  // ÖNEMLİ: Son istek yapılan değerleri sakla - sonsuz döngüyü önler
+  const lastRequestRef = useRef({ stopsKey: '', travelMode: '' });
 
   const mapOptions = useMemo(() => ({
     disableDefaultUI: false,
     zoomControl: true,
-    zoomControlOptions: {
-      position: window.google?.maps?.ControlPosition?.RIGHT_CENTER,
-    },
+    zoomControlOptions: { position: window.google?.maps?.ControlPosition?.RIGHT_CENTER },
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: false,
     gestureHandling: 'greedy',
     colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
+    draggableCursor: selectionMode ? 'crosshair' : 'grab',
+    clickableIcons: false, 
     styles: [
-      {
-        featureType: 'poi',
-        elementType: 'labels',
-        stylers: [{ visibility: 'off' }],
-      },
-      {
-        featureType: 'poi.business',
-        stylers: [{ visibility: 'off' }],
-      },
+      { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }
     ],
-  }), [theme]);
+  }), [theme, selectionMode]);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: apiKey || '',
     id: 'google-maps-script',
   });
 
-  // Calculate directions when stops change
+  // Stops için stabil bir key oluştur (içerik bazlı, referans bazlı değil)
+  const stopsKey = useMemo(() => {
+    if (stops.length === 0) return '';
+    // Sadece koordinatları kullanarak key oluştur - çok daha verimli
+    return stops.map(s => `${s.position.lat.toFixed(6)},${s.position.lng.toFixed(6)}`).join('|');
+  }, [stops]);
+
+  // --- ROTA HESAPLAMA ---
   useEffect(() => {
     if (!isLoaded || stops.length < 2 || !window.google) {
-      setDirections(null);
+      setSingleDirection(null);
+      setTransitDirections([]);
+      setTransitBadges([]);
       return;
     }
 
+    // ÖNEMLİ: Aynı istek daha önce yapıldıysa tekrar yapma - SONSUZ DÖNGÜYÜ ÖNLER
+    const currentRequestKey = `${stopsKey}_${travelMode}`;
+    if (lastRequestRef.current.stopsKey === stopsKey && lastRequestRef.current.travelMode === travelMode) {
+      console.log('[FullScreenItineraryMap] Skipping duplicate API request');
+      return;
+    }
+    
+    // Yeni istek yapılacak, referansı güncelle
+    lastRequestRef.current = { stopsKey, travelMode };
+    console.log('[FullScreenItineraryMap] Making Directions API request:', { travelMode, stopsCount: stops.length });
+
     const directionsService = new window.google.maps.DirectionsService();
-    const origin = stops[0].position;
-    const destination = stops[stops.length - 1].position;
 
-    const waypoints = stops.slice(1, -1).map(stop => ({
-      location: stop.position,
-      stopover: true
-    })).slice(0, 23);
+    // 1. TOPLU TAŞIMA (Sadece kullanıcı butona basınca çalışır)
+    if (travelMode === 'TRANSIT') {
+        setSingleDirection(null); // Araba rotasını temizle
+        setTransitBadges([]); 
+        
+        const fetchTransitLegs = async () => {
+            const promises = [];
+            
+            // Her durak arası için (A->B, B->C) istek at
+            // Bu mecburi çünkü Google Transit'te "waypoints" yok.
+            for (let i = 0; i < stops.length - 1; i++) {
+                const request = {
+                    origin: stops[i].position,
+                    destination: stops[i + 1].position,
+                    travelMode: window.google.maps.TravelMode.TRANSIT,
+                    // Saat/Tarih vermiyoruz, "Şu an"ı baz alır.
+                };
+                
+                promises.push(new Promise((resolve) => {
+                    directionsService.route(request, (result, status) => {
+                        if (status === window.google.maps.DirectionsStatus.OK) {
+                            resolve(result); 
+                        } else {
+                            resolve(null);
+                        }
+                    });
+                }));
+            }
 
-    directionsService.route({
-      origin,
-      destination,
-      waypoints,
-      travelMode: window.google.maps.TravelMode.DRIVING,
-    }, (result, status) => {
-      if (status === window.google.maps.DirectionsStatus.OK) {
-        setDirections(result);
-      } else {
-        console.error(`Directions request failed: ${status}`);
-      }
-    });
-  }, [isLoaded, stops]);
+            const results = await Promise.all(promises);
+            const validResults = results.filter(res => res !== null);
+            setTransitDirections(validResults);
 
-  // Fit bounds when stops change
+            // --- BEDAVA İŞLEM: Rota sonucundan Hat İsimlerini Çekme ---
+            const badges = [];
+            validResults.forEach(result => {
+                const route = result.routes[0]; 
+                const leg = route.legs[0];
+                
+                leg.steps.forEach(step => {
+                    // Sadece önemli toplu taşıma adımlarını al (Yürümeyi alma)
+                    if (step.travel_mode === 'TRANSIT' && step.transit) {
+                        const line = step.transit.line;
+                        
+                        // İsim: Varsa kısa isim (M4), yoksa uzun isim (Kadıköy Metrosu)
+                        const label = line.short_name || line.name || "Transit";
+                        
+                        // Renk: Google'dan geliyorsa al, yoksa Turuncu yap
+                        const color = line.color || '#f59e0b';
+                        const textColor = line.text_color || '#ffffff';
+
+                        badges.push({
+                            position: step.start_location, // Binilen durak
+                            label: label,
+                            color: color,
+                            textColor: textColor,
+                            // icon: line.vehicle.icon // İkonu kaldırdım, sade istedin
+                        });
+                    }
+                });
+            });
+            setTransitBadges(badges);
+        };
+
+        fetchTransitLegs();
+    } 
+    // 2. ARABA / YÜRÜME (Tek İstek - En Ucuzu)
+    else {
+        setTransitDirections([]);
+        setTransitBadges([]);
+
+        const request = {
+            origin: stops[0].position,
+            destination: stops[stops.length - 1].position,
+            // Aradaki durakları ekle
+            waypoints: stops.slice(1, -1).map(stop => ({
+                location: stop.position,
+                stopover: true
+            })).slice(0, 23),
+            travelMode: window.google.maps.TravelMode[travelMode],
+        };
+
+        directionsService.route(request, (result, status) => {
+            if (status === window.google.maps.DirectionsStatus.OK) {
+                setSingleDirection(result);
+            }
+        });
+    }
+
+  }, [isLoaded, stopsKey, travelMode, stops]); // stopsKey ile içerik bazlı kontrol
+
+  // Harita Ortalama
   useEffect(() => {
     if (!map || !stops.length || !window.google) return;
-
     const bounds = new window.google.maps.LatLngBounds();
     stops.forEach(stop => bounds.extend(stop.position));
-
-    // Add some padding
     setTimeout(() => {
-      map.fitBounds(bounds, {
-        top: 80,
-        right: 50,
-        bottom: 150,
-        left: 50
-      });
+      map.fitBounds(bounds, { top: 80, right: 50, bottom: 150, left: 50 });
     }, 100);
-  }, [map, stops]);
+  }, [map, stops.length]);
 
-  const onLoad = useCallback((mapInstance) => {
-    setMap(mapInstance);
-  }, []);
+  const onLoad = useCallback((mapInstance) => setMap(mapInstance), []);
+  const onUnmount = useCallback(() => setMap(null), []);
 
-  const onUnmount = useCallback(() => {
-    setMap(null);
-  }, []);
+  const handleMapClick = useCallback((e) => {
+    if (onMapClick && e.latLng) {
+        onMapClick({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+    }
+  }, [onMapClick]);
 
-  // Custom marker icon using SVG
   const getMarkerIcon = useCallback((index, isSelected) => {
     if (!window.google) return undefined;
-
     const size = isSelected ? 48 : 40;
     const backgroundColor = isSelected ? '#8B5CF6' : '#3B82F6';
-
     return {
       url: `data:image/svg+xml,${encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
@@ -165,214 +233,125 @@ const FullScreenItineraryMap = ({
     };
   }, []);
 
-  // Update map options when theme changes
   useEffect(() => {
-    if (map && window.google) {
-      map.setOptions({
-        disableDefaultUI: false,
-        zoomControl: true,
-        zoomControlOptions: {
-          position: window.google.maps.ControlPosition.RIGHT_CENTER,
-        },
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-        gestureHandling: 'greedy',
-        colorScheme: theme === 'dark' ? 'DARK' : 'LIGHT',
-        styles: [
-          {
-            featureType: 'poi',
-            elementType: 'labels',
-            stylers: [{ visibility: 'off' }],
-          },
-          {
-            featureType: 'poi.business',
-            stylers: [{ visibility: 'off' }],
-          },
-        ],
-      });
-    }
-  }, [map, theme]);
+    if (map && window.google) map.setOptions(mapOptions);
+  }, [map, mapOptions]);
 
-  if (!apiKey) {
-    return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 ${className}`}>
-        <div className="text-center p-8 bg-white/90 dark:bg-slate-800/90 rounded-2xl shadow-xl backdrop-blur-sm max-w-sm mx-4">
-          <AlertCircle className="h-14 w-14 text-amber-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-            Map API Key Required
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Add <code className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-xs">VITE_GOOGLE_MAPS_API_KEY</code> to your .env file
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!apiKey) return <div className="flex items-center justify-center h-full">Map API Key Missing</div>;
+  if (loadError) return <div className="flex items-center justify-center h-full">Map Error</div>;
+  if (!isLoaded) return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
 
-  if (loadError) {
-    return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 ${className}`}>
-        <div className="text-center p-8 bg-white/90 dark:bg-slate-800/90 rounded-2xl shadow-xl backdrop-blur-sm max-w-sm mx-4">
-          <AlertCircle className="h-14 w-14 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
-            Failed to Load Map
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Please check your API key and internet connection
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className={`flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800 ${className}`}>
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const mapCenter = stops.length > 0
-    ? stops[Math.floor(stops.length / 2)].position
-    : defaultCenter;
+  const mapCenter = stops.length > 0 ? stops[Math.floor(stops.length / 2)].position : defaultCenter;
 
   return (
     <div className={`relative ${className}`} style={{ width: '100%', height: '100%' }}>
+      
+      {/* --- MOD SEÇİCİ (ORTALANMIŞ) --- */}
+      {!selectionMode && stops.length > 1 && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-40 bg-white dark:bg-slate-800 p-1.5 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 flex gap-1">
+            <Button size="sm" variant={travelMode === 'DRIVING' ? 'default' : 'ghost'} onClick={() => setTravelMode('DRIVING')} className="h-8 px-3" title="Driving"><Car className="h-4 w-4" /></Button>
+            <Button size="sm" variant={travelMode === 'TRANSIT' ? 'default' : 'ghost'} onClick={() => setTravelMode('TRANSIT')} className="h-8 px-3" title="Public Transit"><Bus className="h-4 w-4" /></Button>
+            <Button size="sm" variant={travelMode === 'WALKING' ? 'default' : 'ghost'} onClick={() => setTravelMode('WALKING')} className="h-8 px-3" title="Walking"><Footprints className="h-4 w-4" /></Button>
+        </div>
+      )}
+
       <GoogleMap
-        key={mapKey}
+        key={`map-${theme}`}
         mapContainerStyle={mapContainerStyle}
         center={mapCenter}
         zoom={stops.length > 0 ? 10 : 6}
         onLoad={onLoad}
         onUnmount={onUnmount}
         options={mapOptions}
+        onClick={handleMapClick}
       >
-        {directions && (
-          <DirectionsRenderer
-            directions={directions}
-            options={{
-              suppressMarkers: true,
-              polylineOptions: {
-                strokeColor: `${theme === 'dark' ? '#f5bd4c' : '#6366f1'}`,
-                strokeOpacity: 0.9,
-                strokeWeight: 5,
-              },
-            }}
-          />
+        {/* TOPLU TAŞIMA ROTALARI */}
+        {!selectionMode && travelMode === 'TRANSIT' && (
+            <>
+                {transitDirections.map((dir, idx) => (
+                    <DirectionsRenderer
+                        key={`dir-${idx}`}
+                        directions={dir}
+                        options={{
+                            suppressMarkers: true,
+                            preserveViewport: true,
+                            polylineOptions: { strokeColor: '#3b82f6', strokeOpacity: 0.5, strokeWeight: 5 }
+                        }}
+                    />
+                ))}
+
+                {/* --- SADELEŞTİRİLMİŞ OTOBÜS ETİKETLERİ --- */}
+                {transitBadges.map((badge, i) => (
+                    <InfoWindow
+                        key={`badge-${i}`}
+                        position={badge.position}
+                        options={{ disableAutoPan: true, pixelOffset: new window.google.maps.Size(0, -5), headerContent: null }}
+                    >
+                        {/* SADECE HAT İSMİ VE RENGİ */}
+                        <div 
+                            className="font-bold text-sm px-2 py-1 rounded shadow-sm text-white"
+                            style={{ backgroundColor: badge.color, color: badge.textColor }}
+                        >
+                            {badge.label}
+                        </div>
+                    </InfoWindow>
+                ))}
+            </>
         )}
 
+        {/* ARABA/YÜRÜME ROTASI */}
+        {!selectionMode && travelMode !== 'TRANSIT' && singleDirection && (
+            <DirectionsRenderer
+                directions={singleDirection}
+                options={{
+                    suppressMarkers: true,
+                    polylineOptions: {
+                        strokeColor: travelMode === 'WALKING' ? '#10b981' : (theme === 'dark' ? '#f5bd4c' : '#6366f1'),
+                        strokeOpacity: 0.8,
+                        strokeWeight: 5,
+                        icons: travelMode === 'WALKING' ? [{ 
+                            icon: { path: window.google.maps.SymbolPath.CIRCLE, fillOpacity: 1, scale: 3 },
+                            offset: '0',
+                            repeat: '10px'
+                        }] : []
+                    },
+                }}
+            />
+        )}
+
+        {/* DURAKLAR */}
         {stops.map((stop, index) => (
           <Marker
             key={stop.id}
             position={stop.position}
             icon={getMarkerIcon(index, selectedStopId === stop.id)}
             title={stop.name}
-            onClick={() => onStopClick(stop)}
+            zIndex={100}
+            onClick={() => { if (!selectionMode) onStopClick(stop.original || stop); }}
           />
         ))}
       </GoogleMap>
 
-      {/* Loading overlay - when generating itinerary */}
+      {/* YÜKLENİYOR... */}
       <AnimatePresence>
         {isLoading && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="absolute inset-0 z-50 flex items-center justify-center pointer-events-auto"
-          >
-            {/* Blurred background overlay */}
-            <motion.div
-              initial={{ backdropFilter: 'blur(0px)' }}
-              animate={{ backdropFilter: 'blur(8px)' }}
-              exit={{ backdropFilter: 'blur(0px)' }}
-              transition={{ duration: 0.3 }}
-              className="absolute inset-0 bg-black/20 dark:bg-black/40"
-            />
-            
-            {/* Loading content */}
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ duration: 0.3, type: 'spring', stiffness: 200 }}
-              className="relative z-10 text-center p-8 bg-white/95 dark:bg-[rgb(22,26,29)]/95 rounded-2xl shadow-2xl backdrop-blur-xl max-w-sm mx-4 border border-slate-200/50 dark:border-slate-700/50"
-            >
-              {/* Animated icon - Sparkles for Generate, Wand2 for Refine */}
-              <motion.div
-                animate={{ 
-                  rotate: [0, 360],
-                  scale: [1, 1.1, 1]
-                }}
-                transition={{ 
-                  rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-                  scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
-                }}
-                className="p-4 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 dark:from-violet-500/30 dark:to-indigo-500/30 w-fit mx-auto mb-4"
-              >
-                {loadingMessage.includes("Refining") ? (
-                  <Wand2 className="h-12 w-12 text-violet-500 dark:text-violet-400" />
-                ) : (
-                  <Sparkles className="h-12 w-12 text-violet-500 dark:text-violet-400" />
-                )}
-              </motion.div>
-              
-              {/* Pulsing loader */}
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <motion.div
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                  className="h-2 w-2 rounded-full bg-violet-500"
-                />
-                <motion.div
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-                  className="h-2 w-2 rounded-full bg-violet-500"
-                />
-                <motion.div
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
-                  className="h-2 w-2 rounded-full bg-violet-500"
-                />
-              </div>
-              
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
-                {loadingMessage}
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                {loadingDescription}
-              </p>
-            </motion.div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-black/50 backdrop-blur-sm">
+             <div className="text-center">
+                <Loader2 className="h-10 w-10 animate-spin mx-auto text-violet-500 mb-2"/>
+                <p className="font-semibold text-slate-800 dark:text-white">{loadingMessage}</p>
+                <p className="text-sm text-slate-500">{loadingDescription}</p>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Empty state overlay - only when no itinerary selected */}
+      {/* BOŞ STATE */}
       {stops.length === 0 && !isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center p-8 bg-white/95 dark:bg-[rgb(22,26,29)]/95 rounded-2xl shadow-2xl backdrop-blur-sm max-w-sm mx-4">
-            <div className="p-4 rounded-full bg-blue-100 dark:bg-blue-900/30 w-fit mx-auto mb-4">
-              <MapPin className="h-12 w-12 text-blue-500" />
-            </div>
-            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
-              Welcome to Your Itineraries
-            </h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              <Highlighter action="underline" color="#FF9800">
-                Select
-              </Highlighter>{" "}
-              an itinerary from the list or{" "}
-              <Highlighter action="underline" color="#87CEFA">
-                Generate
-              </Highlighter>{" "}
-              a new one to see it on the map
-            </p>
+            <div className="p-4 rounded-full bg-blue-100 dark:bg-blue-900/30 w-fit mx-auto mb-4"><MapPin className="h-12 w-12 text-blue-500" /></div>
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">Welcome to Your Itineraries</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400"><Highlighter action="underline" color="#FF9800">Select</Highlighter> an itinerary from the list or <Highlighter action="underline" color="#87CEFA">Generate</Highlighter> a new one.</p>
           </div>
         </div>
       )}
