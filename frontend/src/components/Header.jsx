@@ -158,10 +158,10 @@ export default function Header() {
                             {!currentUser.isAdmin && (
                                 <>
                                     <Link to={'/my-routes'}>
-                                        <Dropdown.Item>Your Routes</Dropdown.Item>
+                                        <Dropdown.Item>My Routes</Dropdown.Item>
                                     </Link>
                                     <Link to={'/my-itineraries'}>
-                                        <Dropdown.Item>Your Itineraries</Dropdown.Item>
+                                        <Dropdown.Item>My Itineraries</Dropdown.Item>
                                     </Link>
                                 </>
                             )}

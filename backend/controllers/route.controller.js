@@ -4,6 +4,7 @@ import User from "../models/user.model.js";
 import Itinerary from "../models/itinerary.model.js";
 import { errorHandler } from "../utils/error.js";
 import { mapDaysToWaypointList } from "../utils/itineraryMapper.js";
+import { generateItineraryCoverImage } from "../services/image.service.js";
 
 const buildSlug = (title = "") => {
     const base = title
@@ -61,6 +62,21 @@ export const createRoute = async (req, res, next) => {
             return next(errorHandler(400, "Title and summary are required"));
         }
 
+        // Generate AI cover image if not provided
+        let finalCoverImage = coverImage;
+        if (!coverImage) {
+            console.log("Generating AI cover image for new route...");
+            const { url: generatedImageUrl } = await generateItineraryCoverImage({
+                title,
+                summary,
+                city: startLocation,
+                tags: sanitizeArray(tags),
+                durationDays,
+            });
+            finalCoverImage = generatedImageUrl;
+            console.log("AI cover image generated:", finalCoverImage ? "Success" : "Fallback used");
+        }
+
         const slugCandidate = buildSlug(title);
         let slug = slugCandidate;
         let collisionCount = 0;
@@ -76,7 +92,7 @@ export const createRoute = async (req, res, next) => {
             visibility,
             status: 'draft', // New routes start as draft
             slug,
-            coverImage,
+            coverImage: finalCoverImage,
             gallery: sanitizeArray(gallery),
             tags: sanitizeArray(tags),
             terrainTypes: sanitizeArray(terrainTypes),
@@ -196,6 +212,21 @@ const upsertRouteFromItinerary = async ({
     const finalVisibility = sharePublicly ? 'public' : visibility || 'private';
     const finalStatus = 'shared';
 
+    // Generate AI cover image if neither payload nor itinerary has one
+    let finalCoverImage = coverImage || baseItinerary.coverImage;
+    if (!finalCoverImage) {
+        console.log("Generating AI cover image for route from itinerary...");
+        const { url: generatedImageUrl } = await generateItineraryCoverImage({
+            title: derivedTitle,
+            summary: derivedSummary,
+            city: startLocation || firstWaypoint?.location,
+            tags: sanitizedTags,
+            durationDays: durationDays ?? baseItinerary.durationDays,
+        });
+        finalCoverImage = generatedImageUrl;
+        console.log("AI cover image generated:", finalCoverImage ? "Success" : "Fallback used");
+    }
+
     const routePayload = {
         userId,
         title: derivedTitle,
@@ -203,7 +234,7 @@ const upsertRouteFromItinerary = async ({
         visibility: finalVisibility,
         status: finalStatus,
         slug,
-        coverImage: coverImage || baseItinerary.coverImage,
+        coverImage: finalCoverImage,
         gallery: sanitizedGallery,
         tags: sanitizedTags,
         terrainTypes: sanitizedTerrain,
@@ -688,6 +719,18 @@ export const forkRoute = async (req, res, next) => {
             slug = `${slugCandidate}-${collisionCount}`;
         }
 
+        // Generate a unique AI cover image for the forked route
+        console.log("Generating AI cover image for forked route...");
+        const { url: generatedImageUrl } = await generateItineraryCoverImage({
+            title: forkTitle,
+            summary: templateRoute.summary,
+            city: templateRoute.startLocation,
+            tags: templateRoute.tags,
+            durationDays: templateRoute.durationDays,
+        });
+        const forkCoverImage = generatedImageUrl || templateRoute.coverImage;
+        console.log("AI cover image for fork generated:", generatedImageUrl ? "Success" : "Using original");
+
         const forkedRoute = new Route({
             userId: req.user.id,
             title: forkTitle,
@@ -695,7 +738,7 @@ export const forkRoute = async (req, res, next) => {
             visibility: "private",
             status: "finished",
             slug,
-            coverImage: templateRoute.coverImage,
+            coverImage: forkCoverImage,
             gallery: templateRoute.gallery,
             tags: templateRoute.tags,
             terrainTypes: templateRoute.terrainTypes,
