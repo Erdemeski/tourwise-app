@@ -406,10 +406,11 @@ export default function DashRoutes() {
         try {
             const startIndex = append ? routes.length : 0;
             let query;
+            const limit = 20;
             if (currentUser.isAdmin) {
-                query = `/api/routes?order=desc&startIndex=${startIndex}&limit=20`;
+                query = `/api/routes?order=desc&startIndex=${startIndex}&limit=${limit}`;
             } else {
-                query = `/api/routes?userId=${currentUser._id}&visibility=all&order=desc&startIndex=${startIndex}`;
+                query = `/api/routes?userId=${currentUser._id}&visibility=all&order=desc&startIndex=${startIndex}&limit=${limit}`;
             }
             const res = await fetch(query, { credentials: 'include' });
             const data = await res.json();
@@ -418,7 +419,8 @@ export default function DashRoutes() {
             }
             const fetchedRoutes = data.routes || [];
             setRoutes((prev) => (append ? [...prev, ...fetchedRoutes] : fetchedRoutes));
-            setShowMore(fetchedRoutes.length >= 9);
+            // Check if there might be more routes to fetch
+            setShowMore(fetchedRoutes.length >= limit);
         } catch (err) {
             setError(err.message);
         } finally {

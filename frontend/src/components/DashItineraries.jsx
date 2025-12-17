@@ -646,6 +646,9 @@ export default function DashItineraries() {
         return offsets;
     }, [selected?.days]);
 
+    // ÖNEMLİ: days prop'unu memoize et - her render'da yeni array oluşturmayı önler
+    const memoizedDays = useMemo(() => selected?.days || [], [selected?.days]);
+
     const handleStopClick = (stop) => {
         setSelectedStopId(stop.id);
         setSelectedStop(stop);
@@ -673,7 +676,7 @@ export default function DashItineraries() {
             {/* Full Screen Map */}
             <div className="absolute inset-0 w-full h-full">
                 <FullScreenItineraryMap
-                    days={selected?.days || []}
+                    days={memoizedDays}
                     onStopClick={handleStopClick}
                     selectedStopId={selectedStopId}
                     isLoading={generatorLoading || modifyLoading}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert } from 'flowbite-react';
 import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader } from '@react-google-maps/api';
 
@@ -36,12 +36,21 @@ const ItineraryMap = ({ days = [], height = '100%', onStopClick, onMapClick, sel
     // useMemo ile stops hesaplaması doğru, kalmalı.
     const stops = useMemo(() => extractStops(days), [days]);
     const [directions, setDirections] = useState(null);
+    
+    // ÖNEMLİ: Son istek yapılan değerleri sakla - sonsuz döngüyü önler
+    const lastRequestRef = useRef('');
 
     const { isLoaded, loadError } = useJsApiLoader({
         googleMapsApiKey: apiKey,
         id: 'google-map-script',
         libraries: ['places']
     });
+
+    // Stops için stabil bir key oluştur (içerik bazlı, referans bazlı değil)
+    const stopsKey = useMemo(() => {
+        if (stops.length === 0) return '';
+        return stops.map(s => `${s.position.lat.toFixed(6)},${s.position.lng.toFixed(6)}`).join('|');
+    }, [stops]);
 
     // Harita Rotasını Çizen Effect
     useEffect(() => {
@@ -50,6 +59,16 @@ const ItineraryMap = ({ days = [], height = '100%', onStopClick, onMapClick, sel
             if (stops.length < 2) setDirections(null);
             return;
         }
+
+        // ÖNEMLİ: Aynı istek daha önce yapıldıysa tekrar yapma - SONSUZ DÖNGÜYÜ ÖNLER
+        if (lastRequestRef.current === stopsKey) {
+            console.log('[ItineraryMap] Skipping duplicate API request');
+            return;
+        }
+        
+        // Yeni istek yapılacak, referansı güncelle
+        lastRequestRef.current = stopsKey;
+        console.log('[ItineraryMap] Making Directions API request:', { stopsCount: stops.length });
 
         const directionsService = new window.google.maps.DirectionsService();
         
@@ -71,7 +90,7 @@ const ItineraryMap = ({ days = [], height = '100%', onStopClick, onMapClick, sel
                 console.error(`Directions request failed due to ${status}`);
             }
         });
-    }, [isLoaded, stops]); // stops değiştiğinde rota tekrar çizilir
+    }, [isLoaded, stopsKey, stops]); // stopsKey ile içerik bazlı kontrol
 
     const handleMapClick = (e) => {
         // Sadece selectionMode açıksa tıklamayı kabul et

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleMap, Marker, DirectionsRenderer, useJsApiLoader, InfoWindow } from '@react-google-maps/api';
 import { Loader2, AlertCircle, MapPin, Car, Bus, Footprints } from 'lucide-react';
 import { useSelector } from 'react-redux';
@@ -54,6 +54,9 @@ const FullScreenItineraryMap = ({
   const [map, setMap] = useState(null);
   const [travelMode, setTravelMode] = useState('DRIVING'); // Varsayılan DRIVING (En ucuz)
 
+  // ÖNEMLİ: Son istek yapılan değerleri sakla - sonsuz döngüyü önler
+  const lastRequestRef = useRef({ stopsKey: '', travelMode: '' });
+
   const mapOptions = useMemo(() => ({
     disableDefaultUI: false,
     zoomControl: true,
@@ -75,6 +78,13 @@ const FullScreenItineraryMap = ({
     id: 'google-maps-script',
   });
 
+  // Stops için stabil bir key oluştur (içerik bazlı, referans bazlı değil)
+  const stopsKey = useMemo(() => {
+    if (stops.length === 0) return '';
+    // Sadece koordinatları kullanarak key oluştur - çok daha verimli
+    return stops.map(s => `${s.position.lat.toFixed(6)},${s.position.lng.toFixed(6)}`).join('|');
+  }, [stops]);
+
   // --- ROTA HESAPLAMA ---
   useEffect(() => {
     if (!isLoaded || stops.length < 2 || !window.google) {
@@ -83,6 +93,17 @@ const FullScreenItineraryMap = ({
       setTransitBadges([]);
       return;
     }
+
+    // ÖNEMLİ: Aynı istek daha önce yapıldıysa tekrar yapma - SONSUZ DÖNGÜYÜ ÖNLER
+    const currentRequestKey = `${stopsKey}_${travelMode}`;
+    if (lastRequestRef.current.stopsKey === stopsKey && lastRequestRef.current.travelMode === travelMode) {
+      console.log('[FullScreenItineraryMap] Skipping duplicate API request');
+      return;
+    }
+    
+    // Yeni istek yapılacak, referansı güncelle
+    lastRequestRef.current = { stopsKey, travelMode };
+    console.log('[FullScreenItineraryMap] Making Directions API request:', { travelMode, stopsCount: stops.length });
 
     const directionsService = new window.google.maps.DirectionsService();
 
@@ -175,7 +196,7 @@ const FullScreenItineraryMap = ({
         });
     }
 
-  }, [isLoaded, stops, travelMode]); // Sadece duraklar veya mod değişirse çalışır
+  }, [isLoaded, stopsKey, travelMode, stops]); // stopsKey ile içerik bazlı kontrol
 
   // Harita Ortalama
   useEffect(() => {
