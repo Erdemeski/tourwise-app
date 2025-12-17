@@ -91,6 +91,112 @@ const statusConfig = {
     archived: { label: 'Archived', variant: 'destructive', icon: AlertCircle },
 };
 
+const TRANSPORT_MODE_LABELS = {
+    DRIVING: 'Driving',
+    WALKING: 'Walking',
+    TRANSIT: 'Public transport',
+};
+
+// Very rough country/city multipliers for public transport costs.
+// Baseline assumes mid-cost cities; we scale only the "without accommodation" portion.
+const TRANSPORT_COST_MULTIPLIER_BY_COUNTRY = {
+    // High cost
+    switzerland: 1.6,
+    norway: 1.5,
+    denmark: 1.4,
+    sweden: 1.25,
+    finland: 1.2,
+    iceland: 1.4,
+    unitedstates: 1.25,
+    usa: 1.25,
+    canada: 1.15,
+    unitedkingdom: 1.2,
+    ireland: 1.2,
+    singapore: 1.35,
+    australia: 1.2,
+    newzealand: 1.2,
+    japan: 1.15,
+
+    // Mid
+    germany: 1.1,
+    france: 1.1,
+    netherlands: 1.15,
+    belgium: 1.1,
+    austria: 1.1,
+    italy: 1.05,
+    spain: 1.0,
+    portugal: 0.95,
+
+    // Lower cost
+    turkey: 0.6,
+    türkiye: 0.6,
+    poland: 0.8,
+    czechia: 0.85,
+    czechrepublic: 0.85,
+    hungary: 0.8,
+    romania: 0.75,
+    bulgaria: 0.7,
+    greece: 0.85,
+    thailand: 0.7,
+    vietnam: 0.6,
+    indonesia: 0.65,
+    malaysia: 0.7,
+    india: 0.5,
+    mexico: 0.75,
+    brazil: 0.8,
+};
+
+const TRANSPORT_COST_MULTIPLIER_BY_CITY = {
+    // Expensive transit systems / high cost of living cities
+    london: 1.35,
+    zurich: 1.7,
+    geneva: 1.6,
+    oslo: 1.5,
+    stockholm: 1.25,
+    copenhagen: 1.4,
+    singapore: 1.35,
+    newyork: 1.25,
+    sanfrancisco: 1.25,
+    sydney: 1.2,
+
+    // Lower cost cities
+    istanbul: 0.6,
+    ankara: 0.55,
+    izmir: 0.55,
+    bangkok: 0.7,
+    hanoi: 0.6,
+    saigon: 0.6,
+    hochiminhcity: 0.6,
+};
+
+const normalizeKey = (value) =>
+    String(value || '')
+        .toLowerCase()
+        .replace(/[\s\-\u2013\u2014_.,/()]+/g, '')
+        .trim();
+
+const getItineraryLocationHints = (itinerary) => {
+    const days = itinerary?.days || [];
+    for (const day of days) {
+        const stops = day?.stops || [];
+        for (const stop of stops) {
+            const city = stop?.location?.city;
+            const country = stop?.location?.country;
+            if (city || country) return { city, country };
+        }
+    }
+    return { city: undefined, country: undefined };
+};
+
+const getTransportGeoMultiplier = ({ city, country }) => {
+    const cityKey = normalizeKey(city);
+    const countryKey = normalizeKey(country);
+
+    if (cityKey && TRANSPORT_COST_MULTIPLIER_BY_CITY[cityKey]) return TRANSPORT_COST_MULTIPLIER_BY_CITY[cityKey];
+    if (countryKey && TRANSPORT_COST_MULTIPLIER_BY_COUNTRY[countryKey]) return TRANSPORT_COST_MULTIPLIER_BY_COUNTRY[countryKey];
+    return 1;
+};
+
 // Chat message component
 const ChatMessage = ({ message, isUser }) => (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -139,6 +245,7 @@ export default function DashItineraries() {
     const [listDrawerOpen, setListDrawerOpen] = useState(false);
     const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
     const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+    const [mapTravelMode, setMapTravelMode] = useState('DRIVING'); // comes from FullScreenItineraryMap
 
     // Modal states
     const [generatorOpen, setGeneratorOpen] = useState(false);
@@ -649,6 +756,44 @@ export default function DashItineraries() {
     // ÖNEMLİ: days prop'unu memoize et - her render'da yeni array oluşturmayı önler
     const memoizedDays = useMemo(() => selected?.days || [], [selected?.days]);
 
+    // Adjust displayed budget based on current map travel mode (no new UI controls).
+    const displayedBudget = useMemo(() => {
+        const b = selected?.budget;
+        if (!b) return null;
+
+        const { city, country } = getItineraryLocationHints(selected);
+        const geoMultiplier = getTransportGeoMultiplier({ city, country });
+
+        const currency = b.currency || 'USD';
+        const baseWith = Number(b.withAccommodation ?? b.amount ?? 0) || 0;
+        const baseWithout = Number(b.withoutAccommodation ?? 0) || 0;
+        const accommodationCost =
+            typeof b.accommodationCost === 'number'
+                ? b.accommodationCost
+                : Math.max(0, baseWith - baseWithout);
+
+        const effectiveBaseWithout =
+            baseWithout > 0 ? baseWithout : Math.max(0, baseWith - accommodationCost);
+
+        const mode = String(mapTravelMode || 'DRIVING').toUpperCase();
+        const multiplier =
+            mode === 'WALKING' ? 0.95 : mode === 'DRIVING' ? 1.1 : 1; // TRANSIT baseline
+
+        const withoutAccommodation = Math.round(effectiveBaseWithout * multiplier * geoMultiplier);
+        const withAccommodation = Math.round(withoutAccommodation + (Number(accommodationCost) || 0));
+
+        return {
+            currency,
+            mode,
+            city,
+            country,
+            geoMultiplier,
+            accommodationCost: Number(accommodationCost) || 0,
+            withAccommodation,
+            withoutAccommodation,
+        };
+    }, [selected?.budget, mapTravelMode]);
+
     const handleStopClick = (stop) => {
         setSelectedStopId(stop.id);
         setSelectedStop(stop);
@@ -682,6 +827,7 @@ export default function DashItineraries() {
                     isLoading={generatorLoading || modifyLoading}
                     onMapClick={handleMapClick}
                     selectionMode={isSelectingLocation}
+                    onTravelModeChange={setMapTravelMode}
                     loadingMessage={modifyLoading ? "Refining Your Itinerary" : "Generating Your Itinerary"}
                     loadingDescription={modifyLoading ? "Our AI is refining your trip based on your preferences..." : "Our AI is crafting the perfect trip for you..."}
                     className="w-full h-full"
@@ -901,10 +1047,25 @@ export default function DashItineraries() {
                                                 {statusConfig[selected.status]?.label || selected.status}
                                             </Badge>
                                             {selected.budget && (
-                                                <Badge variant="outline" className="text-emerald-600 border-emerald-300">
-                                                    <DollarSign className="h-3 w-3 mr-1" />
-                                                    {selected.budget.currency} {selected.budget.amount}
-                                                </Badge>
+                                                <>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-emerald-600 border-emerald-300"
+                                                        title={`With accommodation • ${TRANSPORT_MODE_LABELS[displayedBudget?.mode] || displayedBudget?.mode || ''}`}
+                                                    >
+                                                        <DollarSign className="h-3 w-3 mr-1" />
+                                                        {displayedBudget?.currency || selected.budget.currency}{' '}
+                                                        {displayedBudget?.withAccommodation ?? (selected.budget.withAccommodation ?? selected.budget.amount ?? 0)}
+                                                    </Badge>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-teal-600 border-teal-300"
+                                                        title={`Without accommodation • ${TRANSPORT_MODE_LABELS[displayedBudget?.mode] || displayedBudget?.mode || ''}`}
+                                                    >
+                                                        {displayedBudget?.currency || selected.budget.currency}{' '}
+                                                        {displayedBudget?.withoutAccommodation ?? (selected.budget.withoutAccommodation ?? 0)}
+                                                    </Badge>
+                                                </>
                                             )}
                                         </div>
                                         <DrawerTitle className="text-slate-900 dark:text-slate-100">{selected.title}</DrawerTitle>
@@ -938,7 +1099,7 @@ export default function DashItineraries() {
                                     </div>
                                 )}
 
-                                {/* Budget Info with Notes */}
+                                {/* Budget Info */}
                                 {selected.budget && (
                                     <div className="py-4 border-b border-slate-200 dark:border-gray-500">
                                         <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800">
@@ -950,16 +1111,57 @@ export default function DashItineraries() {
                                                     <h4 className="font-semibold text-emerald-800 dark:text-emerald-200">
                                                         Estimated Budget
                                                     </h4>
-                                                    <div className="flex items-baseline gap-2 mt-1">
-                                                        <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                                                            {selected.budget.currency} {selected.budget.amount}
-                                                        </span>
-                                                        {selected.budget.perPerson && (
-                                                            <span className="text-xs sm:text-sm text-emerald-600 dark:text-emerald-400">
-                                                                (~{selected.budget.currency} {selected.budget.perPerson}/person)
+                                                    {displayedBudget?.mode ? (
+                                                        <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                                                            Adjusted for:{' '}
+                                                            <span className="font-semibold">
+                                                                {TRANSPORT_MODE_LABELS[displayedBudget.mode] || displayedBudget.mode}
                                                             </span>
-                                                        )}
+                                                            {displayedBudget?.country || displayedBudget?.city ? (
+                                                                <>
+                                                                    {' '}
+                                                                    •{' '}
+                                                                    <span className="font-semibold">
+                                                                        {[displayedBudget.city, displayedBudget.country].filter(Boolean).join(', ')}
+                                                                    </span>
+                                                                </>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : null}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                                                        <div className="p-3 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-emerald-200 dark:border-emerald-700">
+                                                            <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                                                With accommodation
+                                                            </div>
+                                                            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                                                                {displayedBudget?.currency || selected.budget.currency}{' '}
+                                                                {displayedBudget?.withAccommodation ?? (selected.budget.withAccommodation ?? selected.budget.amount ?? 0)}
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-3 rounded-lg bg-white/60 dark:bg-slate-800/60 border border-teal-200 dark:border-teal-700">
+                                                            <div className="text-xs font-semibold text-teal-700 dark:text-teal-300">
+                                                                Without accommodation
+                                                            </div>
+                                                            <div className="text-2xl font-bold text-teal-700 dark:text-teal-300">
+                                                                {displayedBudget?.currency || selected.budget.currency}{' '}
+                                                                {displayedBudget?.withoutAccommodation ?? (selected.budget.withoutAccommodation ?? 0)}
+                                                            </div>
+                                                        </div>
                                                     </div>
+
+                                                    {typeof displayedBudget?.accommodationCost === 'number' &&
+                                                        displayedBudget.accommodationCost > 0 && (
+                                                            <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                                                                Estimated lodging: {displayedBudget?.currency || selected.budget.currency}{' '}
+                                                                {displayedBudget.accommodationCost}
+                                                            </div>
+                                                        )}
+
+                                                    {selected.budget.perPerson ? (
+                                                        <div className="mt-1 text-xs sm:text-sm text-emerald-600 dark:text-emerald-400">
+                                                            (~{selected.budget.currency} {selected.budget.perPerson}/person)
+                                                        </div>
+                                                    ) : null}
                                                     {selected.budget.notes && (
                                                         <div className="mt-3 flex items-start gap-2">
                                                             <Info className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />

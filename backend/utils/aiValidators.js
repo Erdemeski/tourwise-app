@@ -34,6 +34,9 @@ const daySchema = z.object({
 const budgetSchema = z.object({
   currency: z.string().min(3).max(3),
   amount: z.number().min(0),
+  withAccommodation: z.number().min(0).optional(),
+  withoutAccommodation: z.number().min(0).optional(),
+  accommodationCost: z.number().min(0).optional(),
   perPerson: z.number().min(0).optional(),
   notes: z.string().optional(),
 });

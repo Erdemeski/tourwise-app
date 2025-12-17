@@ -72,8 +72,15 @@ const dayPlanSchema = new mongoose.Schema(
 const budgetSchema = new mongoose.Schema(
     {
         currency: { type: String, default: "USD" },
-        amount: { type: Number, default: 0 }, // Arkadaşının yapısı (Number)
-        // AI Controller String gönderebilir ama Mongoose cast eder, sorun olmaz.
+        // Backward compatible total amount (keep existing field used throughout UI)
+        // We treat `amount` as "with accommodation" total.
+        amount: { type: Number, default: 0 },
+
+        // New dual-budget fields
+        withAccommodation: { type: Number, default: 0 },
+        withoutAccommodation: { type: Number, default: 0 },
+        accommodationCost: { type: Number, default: 0 },
+
         perPerson: { type: Number },
         notes: { type: String, default: "" },
     },
