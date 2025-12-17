@@ -317,13 +317,24 @@ export const analyzeItineraryBudget = async (enrichedPlan) => {
     return {
       currency: 'USD',
       amount: 0,
+      withAccommodation: 0,
+      withoutAccommodation: 0,
+      accommodationCost: 0,
       perPerson: 0,
-      notes: 'Budget analysis unavailable (LLM offline).',
+      // IMPORTANT: Offline fallback should not invent activity/ticket fees.
+      // Keep this conservative; costs can be refined when LLM is available.
+      notes: 'Budget analysis unavailable (LLM offline). Tickets/activities assumed $0 unless explicitly provided.',
     };
   }
 
   const prompt = `
-  You are a travel budget expert. Analyze this itinerary and estimate a realistic budget.
+  You are a travel budget expert.
+  Analyze this itinerary and provide TWO budget estimates, grounded strictly in the itinerary contents and route/logistics.
+  Do NOT invent paid activities, entrance tickets, tours, or special experiences unless explicitly mentioned in the itinerary fields.
+
+  Provide TWO budget estimates:
+  - WITH accommodation (hotel/lodging included)
+  - WITHOUT accommodation (lodging excluded)
   
   INPUT DATA:
   - Duration: ${enrichedPlan.durationDays} days
@@ -332,15 +343,25 @@ export const analyzeItineraryBudget = async (enrichedPlan) => {
   
   CRITICAL INSTRUCTIONS FOR COST OF LIVING ADJUSTMENT:
   1. Identify the City/Country Economic Tier.
-  2. Estimate Costs for Accommodation, Food, Transport, Tickets.
+  2. Estimate costs for Accommodation, Food, and Local Transport based on realistic city-level pricing.
+  3. Tickets/Activities cost MUST be 0 unless you see explicit paid items in the itinerary (e.g. "entrance fee", "ticket", "paid tour", "museum ticket", "balloon ride").
+  3. Return totals for both scenarios.
 
   OUTPUT JSON ONLY:
   {
     "currency": "USD",
     "amount": number,
+    "withAccommodation": number,
+    "withoutAccommodation": number,
+    "accommodationCost": number,
     "perPerson": number,
-    "notes": "Explain the calculation logic."
+    "notes": "Explain the calculation logic (focus on lodging, food, and local transport; tickets/activities only if explicitly mentioned)."
   }
+
+  IMPORTANT:
+  - "amount" MUST equal "withAccommodation" (backward compatibility)
+  - "accommodationCost" is total lodging for the whole trip
+  - "withoutAccommodation" = "withAccommodation" - "accommodationCost"
   `;
 
   try {
@@ -348,12 +369,29 @@ export const analyzeItineraryBudget = async (enrichedPlan) => {
       messages: [{ role: 'system', content: prompt }],
       temperature: 0.5,
     });
-    return parseResponseJson(response);
+    const parsed = parseResponseJson(response);
+    const withAcc = Number(parsed?.withAccommodation ?? parsed?.amount ?? 0) || 0;
+    const accCost = Number(parsed?.accommodationCost ?? 0) || 0;
+    const withoutAcc =
+      Number(parsed?.withoutAccommodation ?? (withAcc - accCost)) || 0;
+
+    return {
+      currency: parsed?.currency || 'USD',
+      amount: withAcc,
+      withAccommodation: withAcc,
+      withoutAccommodation: Math.max(0, withoutAcc),
+      accommodationCost: Math.max(0, accCost),
+      perPerson: Number(parsed?.perPerson ?? withAcc) || withAcc,
+      notes: parsed?.notes || '',
+    };
   } catch (error) {
     console.error('Budget analysis failed', error);
     return {
       currency: 'USD',
       amount: 0,
+      withAccommodation: 0,
+      withoutAccommodation: 0,
+      accommodationCost: 0,
       perPerson: 0,
       notes: 'Budget estimation failed due to service error.',
     };

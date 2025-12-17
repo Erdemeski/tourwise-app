@@ -40,7 +40,8 @@ const FullScreenItineraryMap = ({
   loadingDescription = "Our AI is crafting the perfect trip for you...",
   className = '',
   onMapClick, 
-  selectionMode = false 
+  selectionMode = false,
+  onTravelModeChange
 }) => {
   const theme = useSelector((state) => state.theme.theme);
   const apiKey = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -56,6 +57,11 @@ const FullScreenItineraryMap = ({
 
   // ÖNEMLİ: Son istek yapılan değerleri sakla - sonsuz döngüyü önler
   const lastRequestRef = useRef({ stopsKey: '', travelMode: '' });
+
+  // Expose travel mode to parent (budget/UI integration) without adding new controls.
+  useEffect(() => {
+    if (typeof onTravelModeChange === 'function') onTravelModeChange(travelMode);
+  }, [travelMode, onTravelModeChange]);
 
   const mapOptions = useMemo(() => ({
     disableDefaultUI: false,
