@@ -1,7 +1,11 @@
+import dotenv from "dotenv";
 import { randomUUID } from "crypto";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import sharp from "sharp";
+
+// Load env vars as early as possible so imports depending on them work.
+dotenv.config();
 
 const firebaseConfig = {
     serviceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,

@@ -85,8 +85,13 @@ export const generateAiItinerary = async (req, res, next) => {
 
         const { prompt, preferences } = generationSchema.parse(req.body);
         
+        console.log("1. Requesting plan from LLM...");
         const plan = await requestItineraryPlan(prompt, preferences);
+        
+        console.log("2. Enriching plan with Google Places data...");
         const enrichedPlan = await enrichItineraryWithPlaces(plan);
+
+        console.log("3. Analyzing budget...");
         const budgetAnalysis = await analyzeItineraryBudget(enrichedPlan);
 
         const primaryStop = enrichedPlan?.days?.[0]?.stops?.[0];
