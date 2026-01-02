@@ -371,13 +371,19 @@ export const modifyAiItinerary = async (req, res, next) => {
 
         const modifiedPlanData = await requestItineraryModification(itinerary, prompt);
         const enrichedPlan = await enrichItineraryWithPlaces(modifiedPlanData);
+        const budgetAnalysis = await analyzeItineraryBudget(enrichedPlan);
 
         itinerary.days = enrichedPlan.days;
         itinerary.waypointList = mapDaysToWaypointList ? mapDaysToWaypointList(enrichedPlan.days) : [];
+        itinerary.budget = budgetAnalysis;
+        if (enrichedPlan?.durationDays) {
+            itinerary.durationDays = enrichedPlan.durationDays;
+        }
         
         if (enrichedPlan.summary) itinerary.summary = enrichedPlan.summary;
 
         itinerary.markModified('days');
+        itinerary.markModified('budget');
         itinerary.updatedAt = new Date();
 
         const saved = await itinerary.save();
