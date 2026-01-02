@@ -1,0 +1,32 @@
+# Dependencies
+node_modules
+
+# Build outputs (we build inside container)
+dist
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker files
+Dockerfile
+*.dockerfile
+
+# Documentation
+README.md
+*.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
